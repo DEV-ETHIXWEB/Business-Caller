@@ -4,14 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { Call, Device } from "@twilio/voice-sdk";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
-import {
-  appendMessageLog,
-  loadContacts,
-  loadMessageLog,
-  saveContacts,
-  type Contact,
-  type SentMessage,
-} from "@/lib/localStore";
+import { loadContacts, saveContacts, type Contact } from "@/lib/localStore";
+import type { ThreadMessage } from "@/lib/messageThread";
 
 // The number clients will see on their caller ID. This is display-only;
 // the number actually used to place the call is TWILIO_PHONE_NUMBER on the
@@ -265,14 +259,27 @@ export default function Dialer() {
   const [messageBody, setMessageBody] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
   const [smsError, setSmsError] = useState<string | null>(null);
-  const [messageLog, setMessageLog] = useState<SentMessage[]>(() =>
-    typeof window === "undefined" ? [] : loadMessageLog(),
-  );
+  const [messageLog, setMessageLog] = useState<ThreadMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+
+  // A complete, valid number in the "to" field means there's an active
+  // thread to show/poll; anything else (empty, still being typed) means no
+  // thread yet, so nothing is fetched.
+  const threadNumber = isValidE164(normalizePhoneNumber(messageTo)) ? normalizePhoneNumber(messageTo) : null;
+  const threadContactName = threadNumber ? contacts.find((c) => c.number === threadNumber)?.name : undefined;
+
+  // Keep the conversation pinned to the latest message as new ones arrive
+  // from polling or are sent.
+  useEffect(() => {
+    const el = threadScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messageLog]);
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const threadScrollRef = useRef<HTMLDivElement | null>(null);
 
   // A short synthesized tap - no audio file to ship or go missing, just a
   // quick oscillator blip for tactile feedback on every dialer interaction.
@@ -440,6 +447,45 @@ export default function Dialer() {
       cancelled = true;
     };
   }, [unlocked, refreshDevices]);
+
+  // Twilio records every inbound and outbound SMS on the account regardless
+  // of any webhook, so polling this endpoint - rather than keeping our own
+  // local copy - is what makes a client's reply actually show up here.
+  const fetchThread = useCallback(async (number: string) => {
+    const code = sessionStorage.getItem(STORAGE_KEY);
+    if (!code) return;
+    setMessagesLoading(true);
+    try {
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessCode: code, with: number }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { messages?: ThreadMessage[] };
+      if (res.ok && data.messages) {
+        setMessageLog(data.messages);
+      }
+    } catch {
+      // Silent - the next poll tick retries; a persistent connectivity
+      // issue will already be visible from the dialer/SMS-send errors.
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!unlocked || !threadNumber) return;
+
+    // Deferred via setTimeout/setInterval (rather than called directly) so
+    // the fetch - and the setState calls inside it - never run synchronously
+    // within this effect's own call stack.
+    const initial = setTimeout(() => fetchThread(threadNumber), 0);
+    const interval = setInterval(() => fetchThread(threadNumber), 5000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
+  }, [unlocked, threadNumber, fetchThread]);
 
   useEffect(() => {
     return () => {
@@ -616,9 +662,10 @@ export default function Dialer() {
       if (!res.ok || !data.sid) {
         throw new Error(data.error || "Failed to send message.");
       }
-      const entry: SentMessage = { id: data.sid, to: normalized, body, status: data.status || "sent", sentAt: Date.now() };
-      setMessageLog(appendMessageLog(entry));
       setMessageBody("");
+      // Pull the thread again immediately rather than waiting for the next
+      // poll tick, so the just-sent message appears right away.
+      await fetchThread(normalized);
     } catch (err) {
       setSmsError(err instanceof Error ? err.message : "Failed to send message.");
     } finally {
@@ -688,32 +735,72 @@ export default function Dialer() {
         {/* Messages panel - desktop only */}
         <div className="order-2 hidden w-full max-w-xs shrink-0 lg:order-1 lg:block">
           <div className={SIDE_PANEL_CLASS}>
-            <h2 className={PANEL_HEADING_CLASS}>Messages</h2>
-            <form onSubmit={handleSendMessage} className="mt-3 space-y-2">
-              <input
-                type="tel"
-                inputMode="tel"
-                value={messageTo}
-                onChange={(e) => {
-                  setMessageTo(e.target.value);
-                  setSmsError(null);
-                }}
-                placeholder="+1 555 123 4567"
-                className={COMPACT_INPUT_CLASS}
-                aria-label="Message recipient"
-              />
+            <div className="flex items-center justify-between">
+              <h2 className={PANEL_HEADING_CLASS}>Messages</h2>
+              {threadNumber && messagesLoading && (
+                <span className="text-[10px] text-slate-400 dark:text-slate-500">syncing…</span>
+              )}
+            </div>
+
+            <input
+              type="tel"
+              inputMode="tel"
+              value={messageTo}
+              onChange={(e) => {
+                setMessageTo(e.target.value);
+                setSmsError(null);
+              }}
+              placeholder="+1 555 123 4567"
+              className={`mt-3 ${COMPACT_INPUT_CLASS}`}
+              aria-label="Message recipient"
+            />
+
+            {threadNumber && (
+              <p className="mt-2 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+                {threadContactName ?? threadNumber}
+              </p>
+            )}
+
+            <div
+              ref={threadScrollRef}
+              className="mt-2 h-64 space-y-2 overflow-y-auto rounded-xl border border-white/40 bg-white/20 p-2 dark:border-white/5 dark:bg-black/10"
+            >
+              {!threadNumber && (
+                <p className="p-2 text-center text-xs text-slate-400 dark:text-slate-500">
+                  Enter a number to see the conversation.
+                </p>
+              )}
+              {threadNumber && messageLog.length === 0 && !messagesLoading && (
+                <p className="p-2 text-center text-xs text-slate-400 dark:text-slate-500">No messages yet.</p>
+              )}
+              {threadNumber && messageLog.map((m) => (
+                <div key={m.sid} className={`flex ${m.direction === "outbound" ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-xs ${
+                      m.direction === "outbound"
+                        ? "bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white"
+                        : "border border-white/60 bg-white/80 text-slate-700 dark:border-white/10 dark:bg-white/10 dark:text-slate-200"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                    <p className={`mt-0.5 text-[10px] ${m.direction === "outbound" ? "text-white/70" : "text-slate-400 dark:text-slate-500"}`}>
+                      {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <form onSubmit={handleSendMessage} className="mt-2 space-y-2">
               <textarea
                 value={messageBody}
                 onChange={(e) => setMessageBody(e.target.value)}
                 placeholder="Type a message…"
-                rows={3}
+                rows={2}
                 maxLength={MAX_SMS_LENGTH}
                 className={`${COMPACT_INPUT_CLASS} resize-none`}
                 aria-label="Message body"
               />
-              <div className="text-right text-[11px] text-slate-400 dark:text-slate-500">
-                {messageBody.length}/{MAX_SMS_LENGTH}
-              </div>
               {smsError && <p className={COMPACT_ERROR_CLASS}>{smsError}</p>}
               <button
                 type="submit"
@@ -723,23 +810,6 @@ export default function Dialer() {
                 {sendingMessage ? "Sending…" : "Send SMS"}
               </button>
             </form>
-
-            {messageLog.length > 0 && (
-              <div className="mt-5 max-h-64 space-y-2 overflow-y-auto border-t border-slate-900/5 pt-4 dark:border-white/5">
-                {messageLog.map((m) => (
-                  <div
-                    key={m.id}
-                    className="rounded-xl border border-white/50 bg-white/40 px-3 py-2 text-xs dark:border-white/5 dark:bg-white/[0.03]"
-                  >
-                    <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-                      <span className="font-medium">{m.to}</span>
-                      <span>{new Date(m.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                    </div>
-                    <p className="mt-1 text-slate-700 dark:text-slate-200">{m.body}</p>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
 
