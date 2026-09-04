@@ -135,17 +135,22 @@ needs — no installs, no SIM card, just a laptop with a mic and a browser.
   extra setup.
 - **Mute + keypad** — appear once a call connects, for muting and for
   entering digits into an IVR.
-- **Phone Book** (desktop only, right side) — contacts saved in the
-  browser's local storage, private to that one browser/laptop, not synced
-  anywhere.
-- **Messages/SMS** (desktop only, left side) — enter or pick a number to
-  open its conversation. This is a real two-way thread: it polls
+- **Phone Book** — contacts saved in the browser's local storage, private
+  to that one browser/laptop, not synced anywhere.
+- **Messages/SMS** — an inbox-style list of every past conversation
+  (pulled from Twilio's real message history, most recent first), tap one
+  to open the full thread with a back button to return to the list, or
+  type a new number to start a fresh conversation. Threads poll
   `/api/messages` every 5 seconds, which reads Twilio's actual Message
   history for that number (Twilio records every inbound and outbound SMS
   on the account automatically, regardless of any webhook), so a client's
-  reply shows up here on its own — nothing to configure for that part.
-  If the number matches a saved contact, their name shows instead of the
-  raw number.
+  reply shows up on its own — nothing to configure for that part. If a
+  number matches a saved contact, their name shows instead of the raw
+  number.
+- **On desktop**, Messages and Phone Book sit as permanent side panels.
+  **On mobile**, tap the ☰ menu (top-left) to open them in a slide-in
+  drawer with tabs — full functionality, just tucked away since there's
+  no spare screen width.
 - Sending SMS requires **SMS capability enabled** on `+12064523433` in the
   Twilio Console (Phone Numbers → your number → check the "SMS"
   capability is on) — if it's off, sends fail with a clear error. No
@@ -190,9 +195,10 @@ app/
   api/token/route.ts       Mints Twilio Access Tokens (server-side, gated by APP_ACCESS_CODE)
   api/voice/route.ts       TwiML webhook Twilio calls to place the outbound leg
   api/sms/route.ts         Sends outbound SMS via the Twilio REST API (server-side, same gate)
-  api/messages/route.ts    Reads a conversation's message history live from Twilio (polled by the UI)
+  api/messages/route.ts    Reads one conversation's message history live from Twilio (polled by the UI)
+  api/conversations/route.ts  Reads the list of all conversations, for the Messages inbox view
 lib/
-  auth.ts                  Shared access-code verification (used by /api/token, /api/sms, /api/messages)
+  auth.ts                  Shared access-code verification (used by /api/token, /api/sms, /api/messages, /api/conversations)
   constants.ts             Shared agent identity string
   phone.ts                 E.164 validation/normalization, shared client+server
   rateLimit.ts             In-memory best-effort rate limiter

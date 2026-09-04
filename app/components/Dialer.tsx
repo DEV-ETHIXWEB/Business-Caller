@@ -5,7 +5,7 @@ import Image from "next/image";
 import type { Call, Device } from "@twilio/voice-sdk";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
 import { loadContacts, saveContacts, type Contact } from "@/lib/localStore";
-import type { ThreadMessage } from "@/lib/messageThread";
+import type { ConversationSummary, ThreadMessage } from "@/lib/messageThread";
 
 // The number clients will see on their caller ID. This is display-only;
 // the number actually used to place the call is TWILIO_PHONE_NUMBER on the
@@ -137,6 +137,31 @@ function PlusIcon({ className }: { className?: string }) {
   );
 }
 
+function ArrowLeftIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m12 19-7-7 7-7" />
+      <path d="M19 12H5" />
+    </svg>
+  );
+}
+
+function MenuIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-gradient-to-br from-[#F7F2F1] via-white to-[#F5EFEE] px-4 py-8 dark:from-[#0c0d10] dark:via-[#120a0b] dark:to-black">
@@ -191,6 +216,15 @@ const MINI_ICON_BUTTON_CLASS =
 
 const CONTACT_ROW_CLASS =
   "flex items-center justify-between gap-2 rounded-xl border border-white/50 bg-white/40 px-3 py-2 dark:border-white/5 dark:bg-white/[0.03]";
+
+const CONVERSATION_ROW_CLASS =
+  "flex w-full items-center justify-between gap-2 rounded-xl border border-white/50 bg-white/40 px-3 py-2 text-left transition-all hover:bg-white/70 active:scale-[0.98] dark:border-white/5 dark:bg-white/[0.03] dark:hover:bg-white/[0.08]";
+
+const TAB_BUTTON_CLASS = "rounded-full px-3 py-1.5 text-xs font-medium transition-all";
+
+const TAB_ACTIVE_CLASS = `${TAB_BUTTON_CLASS} bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[0_6px_16px_-8px_rgba(192,39,45,0.5)]`;
+
+const TAB_INACTIVE_CLASS = `${TAB_BUTTON_CLASS} text-slate-500 hover:bg-white/60 dark:text-slate-400 dark:hover:bg-white/5`;
 
 const ERROR_BANNER_CLASS =
   "rounded-2xl border border-red-200/60 bg-red-50/80 px-3 py-2 text-sm text-red-700 backdrop-blur-sm dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-300";
@@ -261,10 +295,15 @@ export default function Dialer() {
   const [smsError, setSmsError] = useState<string | null>(null);
   const [messageLog, setMessageLog] = useState<ThreadMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [conversationsLoading, setConversationsLoading] = useState(false);
+
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState<"messages" | "phonebook">("messages");
 
   // A complete, valid number in the "to" field means there's an active
-  // thread to show/poll; anything else (empty, still being typed) means no
-  // thread yet, so nothing is fetched.
+  // thread to show/poll; anything else (empty, still being typed) means the
+  // conversation list is shown instead.
   const threadNumber = isValidE164(normalizePhoneNumber(messageTo)) ? normalizePhoneNumber(messageTo) : null;
   const threadContactName = threadNumber ? contacts.find((c) => c.number === threadNumber)?.name : undefined;
 
@@ -487,6 +526,37 @@ export default function Dialer() {
     };
   }, [unlocked, threadNumber, fetchThread]);
 
+  // The conversation list (the "inbox" view shown when no thread is open)
+  // is fetched once whenever it becomes visible, not polled continuously -
+  // it's just an index of who you've talked to, not something that needs
+  // second-by-second freshness the way an open thread does.
+  const fetchConversations = useCallback(async () => {
+    const code = sessionStorage.getItem(STORAGE_KEY);
+    if (!code) return;
+    setConversationsLoading(true);
+    try {
+      const res = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessCode: code }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { conversations?: ConversationSummary[] };
+      if (res.ok && data.conversations) {
+        setConversations(data.conversations);
+      }
+    } catch {
+      // Silent - the list simply refreshes next time it's shown.
+    } finally {
+      setConversationsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!unlocked || threadNumber) return;
+    const timer = setTimeout(() => fetchConversations(), 0);
+    return () => clearTimeout(timer);
+  }, [unlocked, threadNumber, fetchConversations]);
+
   useEffect(() => {
     return () => {
       stopTimer();
@@ -526,6 +596,7 @@ export default function Dialer() {
     setMessageTo("");
     setMessageBody("");
     setSmsError(null);
+    setMobileMenuOpen(false);
     resetAfterCall();
   }
 
@@ -693,6 +764,209 @@ export default function Dialer() {
     }
   })();
 
+  // Defined once and reused in two places: the desktop side column and the
+  // mobile drawer (see the bottom of the unlocked return below). Function
+  // declarations above (dialNumber, handleAddContact, etc.) are hoisted, so
+  // referencing them here before their textual definition is fine - what
+  // matters is that this sits after all the state/hooks it reads.
+  const messagesPanelBody = (
+    <div className={SIDE_PANEL_CLASS}>
+      <div className="flex items-center gap-2">
+        {threadNumber && (
+          <button
+            type="button"
+            onClick={() => {
+              playTap();
+              setMessageTo("");
+              setSmsError(null);
+            }}
+            className={MINI_ICON_BUTTON_CLASS}
+            aria-label="Back to conversations"
+          >
+            <ArrowLeftIcon className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <h2 className={`${PANEL_HEADING_CLASS} truncate`}>
+          {threadNumber ? (threadContactName ?? threadNumber) : "Messages"}
+        </h2>
+        {threadNumber && messagesLoading && (
+          <span className="ml-auto shrink-0 text-[10px] text-slate-400 dark:text-slate-500">syncing…</span>
+        )}
+      </div>
+
+      {!threadNumber ? (
+        <>
+          <input
+            type="tel"
+            inputMode="tel"
+            value={messageTo}
+            onChange={(e) => {
+              setMessageTo(e.target.value);
+              setSmsError(null);
+            }}
+            placeholder="New message: +1 555 123 4567"
+            className={`mt-3 ${COMPACT_INPUT_CLASS}`}
+            aria-label="Message recipient"
+          />
+          <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+            {conversationsLoading && conversations.length === 0 && (
+              <p className="p-2 text-center text-xs text-slate-400 dark:text-slate-500">Loading…</p>
+            )}
+            {!conversationsLoading && conversations.length === 0 && (
+              <p className="p-2 text-center text-xs text-slate-400 dark:text-slate-500">No conversations yet.</p>
+            )}
+            {conversations.map((c) => (
+              <button
+                key={c.number}
+                type="button"
+                onClick={() => {
+                  playTap();
+                  setMessageTo(c.number);
+                  setMobileTab("messages");
+                }}
+                className={CONVERSATION_ROW_CLASS}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                    {contacts.find((ct) => ct.number === c.number)?.name ?? c.number}
+                  </p>
+                  <p className="truncate text-xs text-slate-400 dark:text-slate-500">
+                    {c.lastDirection === "outbound" ? "You: " : ""}
+                    {c.lastBody}
+                  </p>
+                </div>
+                <span className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500">
+                  {new Date(c.lastAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <div
+            ref={threadScrollRef}
+            className="mt-3 h-64 space-y-2 overflow-y-auto rounded-xl border border-white/40 bg-white/20 p-2 dark:border-white/5 dark:bg-black/10"
+          >
+            {messageLog.length === 0 && !messagesLoading && (
+              <p className="p-2 text-center text-xs text-slate-400 dark:text-slate-500">No messages yet.</p>
+            )}
+            {messageLog.map((m) => (
+              <div key={m.sid} className={`flex ${m.direction === "outbound" ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-xs ${
+                    m.direction === "outbound"
+                      ? "bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white"
+                      : "border border-white/60 bg-white/80 text-slate-700 dark:border-white/10 dark:bg-white/10 dark:text-slate-200"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                  <p className={`mt-0.5 text-[10px] ${m.direction === "outbound" ? "text-white/70" : "text-slate-400 dark:text-slate-500"}`}>
+                    {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <form onSubmit={handleSendMessage} className="mt-2 space-y-2">
+            <textarea
+              value={messageBody}
+              onChange={(e) => setMessageBody(e.target.value)}
+              placeholder="Type a message…"
+              rows={2}
+              maxLength={MAX_SMS_LENGTH}
+              className={`${COMPACT_INPUT_CLASS} resize-none`}
+              aria-label="Message body"
+            />
+            {smsError && <p className={COMPACT_ERROR_CLASS}>{smsError}</p>}
+            <button
+              type="submit"
+              disabled={sendingMessage || !messageTo.trim() || !messageBody.trim()}
+              className={SMALL_BUTTON_CLASS}
+            >
+              {sendingMessage ? "Sending…" : "Send SMS"}
+            </button>
+          </form>
+        </>
+      )}
+    </div>
+  );
+
+  const phoneBookPanelBody = (
+    <div className={SIDE_PANEL_CLASS}>
+      <h2 className={PANEL_HEADING_CLASS}>Phone Book</h2>
+
+      <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+        {contacts.length === 0 && (
+          <p className="text-xs text-slate-400 dark:text-slate-500">No saved contacts yet.</p>
+        )}
+        {contacts.map((c) => (
+          <div key={c.id} className={CONTACT_ROW_CLASS}>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{c.name}</p>
+              <p className="truncate text-xs text-slate-400 dark:text-slate-500">{c.number}</p>
+            </div>
+            <div className="flex shrink-0 gap-1.5">
+              <button
+                type="button"
+                onClick={() => dialNumber(c.number)}
+                className={MINI_ICON_BUTTON_CLASS}
+                aria-label={`Call ${c.name}`}
+              >
+                <PhoneIcon className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  playTap();
+                  setMessageTo(c.number);
+                  setMobileTab("messages");
+                }}
+                className={MINI_ICON_BUTTON_CLASS}
+                aria-label={`Message ${c.name}`}
+              >
+                <MessageIcon className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteContact(c.id)}
+                className={MINI_ICON_BUTTON_CLASS}
+                aria-label={`Delete ${c.name}`}
+              >
+                <TrashIcon className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <form onSubmit={handleAddContact} className="mt-4 space-y-2 border-t border-slate-900/5 pt-4 dark:border-white/5">
+        <input
+          value={newContactName}
+          onChange={(e) => setNewContactName(e.target.value)}
+          placeholder="Name"
+          className={COMPACT_INPUT_CLASS}
+          aria-label="Contact name"
+        />
+        <input
+          value={newContactNumber}
+          onChange={(e) => setNewContactNumber(e.target.value)}
+          placeholder="+1 555 123 4567"
+          className={COMPACT_INPUT_CLASS}
+          aria-label="Contact number"
+        />
+        {contactFormError && <p className={COMPACT_ERROR_CLASS}>{contactFormError}</p>}
+        <button type="submit" className={SMALL_BUTTON_CLASS}>
+          <span className="inline-flex items-center justify-center gap-1.5">
+            <PlusIcon className="h-3.5 w-3.5" />
+            Add Contact
+          </span>
+        </button>
+      </form>
+    </div>
+  );
+
   if (!unlocked) {
     return (
       <Shell>
@@ -731,87 +1005,66 @@ export default function Dialer() {
 
   return (
     <Shell>
-      <div className="flex w-full max-w-6xl flex-col items-center gap-6 lg:flex-row lg:items-start lg:justify-center">
-        {/* Messages panel - desktop only */}
-        <div className="order-2 hidden w-full max-w-xs shrink-0 lg:order-1 lg:block">
-          <div className={SIDE_PANEL_CLASS}>
+      {/* Mobile-only hamburger, opens a drawer with Messages + Phone Book */}
+      <button
+        type="button"
+        onClick={() => {
+          playTap();
+          setMobileMenuOpen(true);
+        }}
+        className="fixed left-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/60 bg-white/70 text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_10px_25px_-10px_rgba(15,23,42,0.4)] backdrop-blur-xl transition-all active:scale-90 lg:hidden dark:border-white/10 dark:bg-white/10 dark:text-slate-200"
+        aria-label="Open messages and phone book"
+      >
+        <MenuIcon className="h-5 w-5" />
+      </button>
+
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-40 flex lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <div className="relative flex h-full w-[88vw] max-w-sm flex-col gap-3 overflow-y-auto border-r border-white/20 bg-[#F7F2F1]/95 p-4 pt-6 backdrop-blur-2xl dark:border-white/5 dark:bg-[#0c0d10]/95">
             <div className="flex items-center justify-between">
-              <h2 className={PANEL_HEADING_CLASS}>Messages</h2>
-              {threadNumber && messagesLoading && (
-                <span className="text-[10px] text-slate-400 dark:text-slate-500">syncing…</span>
-              )}
-            </div>
-
-            <input
-              type="tel"
-              inputMode="tel"
-              value={messageTo}
-              onChange={(e) => {
-                setMessageTo(e.target.value);
-                setSmsError(null);
-              }}
-              placeholder="+1 555 123 4567"
-              className={`mt-3 ${COMPACT_INPUT_CLASS}`}
-              aria-label="Message recipient"
-            />
-
-            {threadNumber && (
-              <p className="mt-2 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
-                {threadContactName ?? threadNumber}
-              </p>
-            )}
-
-            <div
-              ref={threadScrollRef}
-              className="mt-2 h-64 space-y-2 overflow-y-auto rounded-xl border border-white/40 bg-white/20 p-2 dark:border-white/5 dark:bg-black/10"
-            >
-              {!threadNumber && (
-                <p className="p-2 text-center text-xs text-slate-400 dark:text-slate-500">
-                  Enter a number to see the conversation.
-                </p>
-              )}
-              {threadNumber && messageLog.length === 0 && !messagesLoading && (
-                <p className="p-2 text-center text-xs text-slate-400 dark:text-slate-500">No messages yet.</p>
-              )}
-              {threadNumber && messageLog.map((m) => (
-                <div key={m.sid} className={`flex ${m.direction === "outbound" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-xs ${
-                      m.direction === "outbound"
-                        ? "bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white"
-                        : "border border-white/60 bg-white/80 text-slate-700 dark:border-white/10 dark:bg-white/10 dark:text-slate-200"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                    <p className={`mt-0.5 text-[10px] ${m.direction === "outbound" ? "text-white/70" : "text-slate-400 dark:text-slate-500"}`}>
-                      {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <form onSubmit={handleSendMessage} className="mt-2 space-y-2">
-              <textarea
-                value={messageBody}
-                onChange={(e) => setMessageBody(e.target.value)}
-                placeholder="Type a message…"
-                rows={2}
-                maxLength={MAX_SMS_LENGTH}
-                className={`${COMPACT_INPUT_CLASS} resize-none`}
-                aria-label="Message body"
-              />
-              {smsError && <p className={COMPACT_ERROR_CLASS}>{smsError}</p>}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playTap();
+                    setMobileTab("messages");
+                  }}
+                  className={mobileTab === "messages" ? TAB_ACTIVE_CLASS : TAB_INACTIVE_CLASS}
+                >
+                  Messages
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playTap();
+                    setMobileTab("phonebook");
+                  }}
+                  className={mobileTab === "phonebook" ? TAB_ACTIVE_CLASS : TAB_INACTIVE_CLASS}
+                >
+                  Phone Book
+                </button>
+              </div>
               <button
-                type="submit"
-                disabled={sendingMessage || !messageTo.trim() || !messageBody.trim()}
-                className={SMALL_BUTTON_CLASS}
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className={MINI_ICON_BUTTON_CLASS}
+                aria-label="Close"
               >
-                {sendingMessage ? "Sending…" : "Send SMS"}
+                <CloseIcon className="h-3.5 w-3.5" />
               </button>
-            </form>
+            </div>
+            {mobileTab === "messages" ? messagesPanelBody : phoneBookPanelBody}
           </div>
         </div>
+      )}
+
+      <div className="flex w-full max-w-6xl flex-col items-center gap-6 lg:flex-row lg:items-start lg:justify-center">
+        {/* Messages panel - desktop only, mobile reaches it via the drawer above */}
+        <div className="order-2 hidden w-full max-w-xs shrink-0 lg:order-1 lg:block">{messagesPanelBody}</div>
 
         {/* Dialer */}
         <div className={`order-1 mx-auto shrink-0 lg:order-2 ${CARD_CLASS}`}>
@@ -963,76 +1216,8 @@ export default function Dialer() {
           </div>
         </div>
 
-        {/* Phone book panel - desktop only */}
-        <div className="order-3 hidden w-full max-w-xs shrink-0 lg:block">
-          <div className={SIDE_PANEL_CLASS}>
-            <h2 className={PANEL_HEADING_CLASS}>Phone Book</h2>
-
-            <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
-              {contacts.length === 0 && (
-                <p className="text-xs text-slate-400 dark:text-slate-500">No saved contacts yet.</p>
-              )}
-              {contacts.map((c) => (
-                <div key={c.id} className={CONTACT_ROW_CLASS}>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{c.name}</p>
-                    <p className="truncate text-xs text-slate-400 dark:text-slate-500">{c.number}</p>
-                  </div>
-                  <div className="flex shrink-0 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => dialNumber(c.number)}
-                      className={MINI_ICON_BUTTON_CLASS}
-                      aria-label={`Call ${c.name}`}
-                    >
-                      <PhoneIcon className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMessageTo(c.number)}
-                      className={MINI_ICON_BUTTON_CLASS}
-                      aria-label={`Message ${c.name}`}
-                    >
-                      <MessageIcon className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteContact(c.id)}
-                      className={MINI_ICON_BUTTON_CLASS}
-                      aria-label={`Delete ${c.name}`}
-                    >
-                      <TrashIcon className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <form onSubmit={handleAddContact} className="mt-4 space-y-2 border-t border-slate-900/5 pt-4 dark:border-white/5">
-              <input
-                value={newContactName}
-                onChange={(e) => setNewContactName(e.target.value)}
-                placeholder="Name"
-                className={COMPACT_INPUT_CLASS}
-                aria-label="Contact name"
-              />
-              <input
-                value={newContactNumber}
-                onChange={(e) => setNewContactNumber(e.target.value)}
-                placeholder="+1 555 123 4567"
-                className={COMPACT_INPUT_CLASS}
-                aria-label="Contact number"
-              />
-              {contactFormError && <p className={COMPACT_ERROR_CLASS}>{contactFormError}</p>}
-              <button type="submit" className={SMALL_BUTTON_CLASS}>
-                <span className="inline-flex items-center justify-center gap-1.5">
-                  <PlusIcon className="h-3.5 w-3.5" />
-                  Add Contact
-                </span>
-              </button>
-            </form>
-          </div>
-        </div>
+        {/* Phone book panel - desktop only, mobile reaches it via the drawer above */}
+        <div className="order-3 hidden w-full max-w-xs shrink-0 lg:block">{phoneBookPanelBody}</div>
       </div>
     </Shell>
   );

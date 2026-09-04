@@ -12,3 +12,14 @@ export interface ThreadMessage {
   /** Epoch milliseconds. */
   at: number;
 }
+
+/** One row in the conversation list (app/api/conversations/route.ts) - the
+ * most recent message with each number that has ever exchanged an SMS with
+ * this Twilio number. */
+export interface ConversationSummary {
+  number: string;
+  lastBody: string;
+  lastDirection: "inbound" | "outbound";
+  /** Epoch milliseconds. */
+  lastAt: number;
+}
