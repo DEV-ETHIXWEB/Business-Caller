@@ -135,8 +135,10 @@ needs — no installs, no SIM card, just a laptop with a mic and a browser.
   extra setup.
 - **Mute + keypad** — appear once a call connects, for muting and for
   entering digits into an IVR.
-- **Phone Book** — contacts saved in the browser's local storage, private
-  to that one browser/laptop, not synced anywhere.
+- **Phone Book** — contacts are stored server-side in a Twilio Sync
+  Document (see `TWILIO_SYNC_SERVICE_SID` below), so the same list shows
+  up on every device Amar unlocks the dialer from — add one on a laptop,
+  it's there on the phone too.
 - **Messages/SMS** — an inbox-style list of every past conversation
   (pulled from Twilio's real message history, most recent first), tap one
   to open the full thread with a back button to return to the list, or
@@ -184,6 +186,7 @@ since it's live right now.
 | `TWILIO_AUTH_TOKEN` | Console → Settings → Account settings → Account details & security | **Yes** |
 | `TWILIO_TWIML_APP_SID` | The "Business Caller" TwiML App you created | No, but keep private |
 | `TWILIO_PHONE_NUMBER` | Fixed: `+12064523433` | No |
+| `TWILIO_SYNC_SERVICE_SID` | A Sync Service (Console → Explore Products → Sync → Services), used to store the shared Phone Book | No, but keep private |
 | `APP_ACCESS_CODE` | A password you choose, shared only with Amar | **Yes** |
 | `PUBLIC_BASE_URL` | Your deployed Vercel URL, no trailing slash | No |
 
@@ -200,15 +203,16 @@ app/
   api/token/route.ts       Mints Twilio Access Tokens (server-side, gated by APP_ACCESS_CODE)
   api/voice/route.ts       TwiML webhook Twilio calls to place the outbound leg
   api/sms/route.ts         Sends outbound SMS via the Twilio REST API (server-side, same gate)
-  api/messages/route.ts    Reads one conversation's message history live from Twilio (polled by the UI)
-  api/conversations/route.ts  Reads the list of all conversations, for the Messages inbox view
+  api/messages/route.ts    Reads/deletes one conversation's message history live from Twilio (polled by the UI)
+  api/conversations/route.ts  Reads the list of all conversations, and deletes a whole conversation
+  api/contacts/route.ts    Reads/writes the shared Phone Book (stored in Twilio Sync, not per-browser)
 lib/
-  auth.ts                  Shared access-code verification (used by /api/token, /api/sms, /api/messages, /api/conversations)
+  auth.ts                  Shared access-code verification (used by every /api route above)
   constants.ts             Shared agent identity string
   phone.ts                 E.164 validation/normalization, shared client+server
   rateLimit.ts             In-memory best-effort rate limiter
-  localStore.ts            Browser-local contacts (localStorage, not synced across devices)
-  messageThread.ts         Shared message-thread type used by the API route and the UI
+  contacts.ts              Shared Contact type used by api/contacts and the UI
+  messageThread.ts         Shared message-thread/conversation types used by the API routes and the UI
 .env.example               Template — copy to .env.local, never commit the real one
 ```
 

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { Call, Device } from "@twilio/voice-sdk";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
-import { loadContacts, saveContacts, type Contact } from "@/lib/localStore";
+import type { Contact } from "@/lib/contacts";
 import type { ConversationSummary, ThreadMessage } from "@/lib/messageThread";
 
 // The number clients will see on their caller ID. This is display-only;
@@ -277,14 +277,11 @@ export default function Dialer() {
   const [muted, setMuted] = useState(false);
   const [keypadOpen, setKeypadOpen] = useState(false);
 
-  // Contacts and the message log are local to this browser (see lib/localStore).
-  // These panels only ever render once "unlocked" is true, well after
-  // hydration, so reading localStorage in the lazy initializer here can't
-  // cause a server/client mismatch - `typeof window` just guards the
-  // initializer against running during SSR at all.
-  const [contacts, setContacts] = useState<Contact[]>(() =>
-    typeof window === "undefined" ? [] : loadContacts(),
-  );
+  // Contacts are stored server-side (see app/api/contacts/route.ts) so the
+  // same Phone Book shows up on every device, not just whichever browser
+  // added a contact - fetched once unlocked, below.
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
   const [newContactName, setNewContactName] = useState("");
   const [newContactNumber, setNewContactNumber] = useState("");
   const [contactFormError, setContactFormError] = useState<string | null>(null);
@@ -557,6 +554,57 @@ export default function Dialer() {
     return () => clearTimeout(timer);
   }, [unlocked, threadNumber, fetchConversations]);
 
+  // Contacts are shared across every device via app/api/contacts/route.ts -
+  // fetched once on unlock, then re-fetched after every add/delete so this
+  // browser's list stays in sync with whatever it just wrote.
+  const fetchContacts = useCallback(async () => {
+    const code = sessionStorage.getItem(STORAGE_KEY);
+    if (!code) return;
+    setContactsLoading(true);
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessCode: code }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { contacts?: Contact[] };
+      if (res.ok && data.contacts) {
+        setContacts(data.contacts);
+      }
+    } catch {
+      // Silent - the list simply refreshes next time it's shown.
+    } finally {
+      setContactsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!unlocked) return;
+    const timer = setTimeout(() => fetchContacts(), 0);
+    return () => clearTimeout(timer);
+  }, [unlocked, fetchContacts]);
+
+  // Writes the full contact list back to the server. Used by both add and
+  // delete, since the API replaces the whole list rather than patching one
+  // entry at a time.
+  async function saveContactsToServer(next: Contact[]): Promise<boolean> {
+    const code = sessionStorage.getItem(STORAGE_KEY);
+    if (!code) return false;
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessCode: code, contacts: next }),
+      });
+      if (!res.ok) return false;
+      const data = (await res.json().catch(() => ({}))) as { contacts?: Contact[] };
+      if (data.contacts) setContacts(data.contacts);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   useEffect(() => {
     return () => {
       stopTimer();
@@ -597,6 +645,7 @@ export default function Dialer() {
     setMessageBody("");
     setSmsError(null);
     setMobileMenuOpen(false);
+    setContacts([]);
     resetAfterCall();
   }
 
@@ -670,7 +719,7 @@ export default function Dialer() {
     }
   }
 
-  function handleAddContact(e: React.FormEvent) {
+  async function handleAddContact(e: React.FormEvent) {
     e.preventDefault();
     playTap();
     setContactFormError(null);
@@ -689,15 +738,22 @@ export default function Dialer() {
 
     const next = [...contacts, { id: crypto.randomUUID(), name, number: normalized }];
     setContacts(next);
-    saveContacts(next);
     setNewContactName("");
     setNewContactNumber("");
+
+    const ok = await saveContactsToServer(next);
+    if (!ok) {
+      setContactFormError("Could not save the contact. Please try again.");
+      await fetchContacts();
+    }
   }
 
-  function handleDeleteContact(id: string) {
+  async function handleDeleteContact(id: string) {
     const next = contacts.filter((c) => c.id !== id);
     setContacts(next);
-    saveContacts(next);
+
+    const ok = await saveContactsToServer(next);
+    if (!ok) await fetchContacts();
   }
 
   async function handleSendMessage(e: React.FormEvent) {
@@ -962,10 +1018,15 @@ export default function Dialer() {
 
   const phoneBookPanelBody = (
     <div className={SIDE_PANEL_CLASS}>
-      <h2 className={PANEL_HEADING_CLASS}>Phone Book</h2>
+      <div className="flex items-center justify-between">
+        <h2 className={PANEL_HEADING_CLASS}>Phone Book</h2>
+        {contactsLoading && (
+          <span className="text-[10px] text-slate-400 dark:text-slate-500">syncing…</span>
+        )}
+      </div>
 
       <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
-        {contacts.length === 0 && (
+        {contacts.length === 0 && !contactsLoading && (
           <p className="text-xs text-slate-400 dark:text-slate-500">No saved contacts yet.</p>
         )}
         {contacts.map((c) => (
