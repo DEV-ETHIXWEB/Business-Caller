@@ -1,8 +1,8 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { getClientIp, rateLimit } from "@/lib/rateLimit";
 import { AGENT_IDENTITY } from "@/lib/constants";
+import { verifyAccessCode } from "@/lib/auth";
 
 // Requires Node's crypto module (timingSafeEqual, and the twilio SDK's own
 // use of Node APIs), so this must run on the Node.js runtime, not Edge.
@@ -22,13 +22,6 @@ const REQUIRED_ENV_VARS = [
   "TWILIO_TWIML_APP_SID",
   "APP_ACCESS_CODE",
 ] as const;
-
-function safeCompare(a: string, b: string): boolean {
-  const bufA = Buffer.from(a, "utf8");
-  const bufB = Buffer.from(b, "utf8");
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
-}
 
 export async function POST(req: Request) {
   for (const key of REQUIRED_ENV_VARS) {
@@ -65,7 +58,7 @@ export async function POST(req: Request) {
       ? String((body as Record<string, unknown>).accessCode ?? "")
       : "";
 
-  if (!accessCode || !safeCompare(accessCode, process.env.APP_ACCESS_CODE!)) {
+  if (!accessCode || !verifyAccessCode(accessCode, process.env.APP_ACCESS_CODE!)) {
     return NextResponse.json({ error: "Invalid access code." }, { status: 401 });
   }
 

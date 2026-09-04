@@ -4,6 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { Call, Device } from "@twilio/voice-sdk";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
+import {
+  appendMessageLog,
+  loadContacts,
+  loadMessageLog,
+  saveContacts,
+  type Contact,
+  type SentMessage,
+} from "@/lib/localStore";
 
 // The number clients will see on their caller ID. This is display-only;
 // the number actually used to place the call is TWILIO_PHONE_NUMBER on the
@@ -12,6 +20,7 @@ import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
 const DISPLAY_CALLER_ID = "+1 (206) 452-3433";
 
 const STORAGE_KEY = "dialer_access_code";
+const MAX_SMS_LENGTH = 1600;
 
 const KEYPAD_DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
@@ -100,6 +109,40 @@ function ChevronDownIcon({ className }: { className?: string }) {
   );
 }
 
+function PhoneIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92Z" />
+    </svg>
+  );
+}
+
+function MessageIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" />
+    </svg>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+function PlusIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-gradient-to-br from-[#F7F2F1] via-white to-[#F5EFEE] px-4 py-8 dark:from-[#0c0d10] dark:via-[#120a0b] dark:to-black">
@@ -114,14 +157,25 @@ function Shell({ children }: { children: React.ReactNode }) {
 const CARD_CLASS =
   "relative w-full max-w-sm rounded-[2rem] border border-white/70 bg-white/70 p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_25px_70px_-20px_rgba(192,39,45,0.15),0_15px_35px_-15px_rgba(15,23,42,0.2)] backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-white/[0.04] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_25px_70px_-15px_rgba(192,39,45,0.25),0_20px_60px_-20px_rgba(0,0,0,0.8)]";
 
+const SIDE_PANEL_CLASS =
+  "w-full rounded-[1.75rem] border border-white/70 bg-white/70 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_20px_50px_-20px_rgba(192,39,45,0.12),0_12px_28px_-15px_rgba(15,23,42,0.18)] backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-white/[0.04] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_20px_50px_-15px_rgba(192,39,45,0.2),0_15px_45px_-20px_rgba(0,0,0,0.8)]";
+
+const PANEL_HEADING_CLASS = "text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400";
+
 const INPUT_CLASS =
   "mt-1 w-full rounded-2xl border border-white/70 bg-white/60 px-4 py-2.5 text-slate-900 shadow-[inset_0_2px_6px_rgba(15,23,42,0.08)] outline-none backdrop-blur-sm transition placeholder:text-slate-400 focus:border-[#C0272D]/40 focus:bg-white/90 focus:ring-4 focus:ring-[#C0272D]/15 disabled:bg-slate-100/50 disabled:text-slate-400 dark:border-white/10 dark:bg-white/5 dark:text-slate-50 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.4)] dark:placeholder:text-slate-500 dark:focus:bg-white/10 dark:focus:ring-[#C0272D]/20 dark:disabled:bg-white/[0.02] dark:disabled:text-slate-600";
+
+const COMPACT_INPUT_CLASS =
+  "w-full rounded-xl border border-white/70 bg-white/60 px-3 py-2 text-sm text-slate-900 shadow-[inset_0_2px_6px_rgba(15,23,42,0.08)] outline-none backdrop-blur-sm transition placeholder:text-slate-400 focus:border-[#C0272D]/40 focus:bg-white/90 focus:ring-4 focus:ring-[#C0272D]/15 dark:border-white/10 dark:bg-white/5 dark:text-slate-50 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.4)] dark:placeholder:text-slate-500 dark:focus:bg-white/10 dark:focus:ring-[#C0272D]/20";
 
 const SELECT_CLASS =
   "w-full appearance-none rounded-xl border border-white/70 bg-white/60 py-2 pl-8 pr-7 text-[11px] font-medium text-slate-700 shadow-[inset_0_2px_4px_rgba(15,23,42,0.06)] outline-none backdrop-blur-sm transition focus:border-[#C0272D]/40 focus:ring-2 focus:ring-[#C0272D]/15 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]";
 
 const PRIMARY_BUTTON_CLASS =
   "mt-6 w-full rounded-full bg-gradient-to-b from-slate-800 to-slate-950 py-3 font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_25px_-8px_rgba(15,23,42,0.6),0_0_30px_-8px_rgba(192,39,45,0.35)] transition-all hover:brightness-110 active:scale-[0.98] active:shadow-[inset_0_2px_6px_rgba(0,0,0,0.4)] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 dark:from-white dark:to-slate-100 dark:text-slate-900 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_10px_25px_-8px_rgba(0,0,0,0.5),0_0_30px_-8px_rgba(192,39,45,0.4)]";
+
+const SMALL_BUTTON_CLASS =
+  "w-full rounded-full bg-gradient-to-b from-slate-800 to-slate-950 py-2 text-xs font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_8px_18px_-8px_rgba(15,23,42,0.5)] transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:from-white dark:to-slate-100 dark:text-slate-900";
 
 const CALL_BUTTON_CLASS =
   "mt-5 w-full rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 py-3 font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_10px_25px_-8px_rgba(16,185,129,0.6)] transition-all hover:brightness-105 active:scale-[0.98] active:shadow-[inset_0_2px_6px_rgba(0,0,0,0.25)] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 disabled:shadow-none";
@@ -138,8 +192,16 @@ const ICON_BUTTON_ACTIVE_CLASS =
 const KEYPAD_BUTTON_CLASS =
   "flex h-11 items-center justify-center rounded-xl border border-white/60 bg-white/50 text-sm font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_10px_-6px_rgba(15,23,42,0.3)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-95 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.15)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_10px_-6px_rgba(0,0,0,0.5)] dark:hover:bg-white/10";
 
+const MINI_ICON_BUTTON_CLASS =
+  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/60 bg-white/50 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-90 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10";
+
+const CONTACT_ROW_CLASS =
+  "flex items-center justify-between gap-2 rounded-xl border border-white/50 bg-white/40 px-3 py-2 dark:border-white/5 dark:bg-white/[0.03]";
+
 const ERROR_BANNER_CLASS =
   "rounded-2xl border border-red-200/60 bg-red-50/80 px-3 py-2 text-sm text-red-700 backdrop-blur-sm dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-300";
+
+const COMPACT_ERROR_CLASS = "text-xs text-red-600 dark:text-red-400";
 
 function formatDuration(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
@@ -186,6 +248,26 @@ export default function Dialer() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [muted, setMuted] = useState(false);
   const [keypadOpen, setKeypadOpen] = useState(false);
+
+  // Contacts and the message log are local to this browser (see lib/localStore).
+  // These panels only ever render once "unlocked" is true, well after
+  // hydration, so reading localStorage in the lazy initializer here can't
+  // cause a server/client mismatch - `typeof window` just guards the
+  // initializer against running during SSR at all.
+  const [contacts, setContacts] = useState<Contact[]>(() =>
+    typeof window === "undefined" ? [] : loadContacts(),
+  );
+  const [newContactName, setNewContactName] = useState("");
+  const [newContactNumber, setNewContactNumber] = useState("");
+  const [contactFormError, setContactFormError] = useState<string | null>(null);
+
+  const [messageTo, setMessageTo] = useState("");
+  const [messageBody, setMessageBody] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [smsError, setSmsError] = useState<string | null>(null);
+  const [messageLog, setMessageLog] = useState<SentMessage[]>(() =>
+    typeof window === "undefined" ? [] : loadMessageLog(),
+  );
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
@@ -277,8 +359,8 @@ export default function Dialer() {
 
   // Reads the current input/output device lists from the Twilio Device's
   // AudioHelper. Bluetooth headsets need no special handling - once paired
-  // with the OS, they just show up here like any other device, and macOS
-  // fires the SDK's "deviceChange" event when one connects or disconnects.
+  // with the OS, they just show up here like any other device, and the SDK
+  // fires "deviceChange" when one connects or disconnects.
   const refreshDevices = useCallback((device: Device) => {
     const audio = device.audio;
     if (!audio) return;
@@ -395,22 +477,28 @@ export default function Dialer() {
     setPhoneNumber("");
     setInputDevices([]);
     setOutputDevices([]);
+    setMessageTo("");
+    setMessageBody("");
+    setSmsError(null);
     resetAfterCall();
   }
 
-  async function handleCall(e: React.FormEvent) {
-    e.preventDefault();
+  // Shared by the phone number form and by clicking "Call" on a phone book
+  // entry, so both paths get the same validation and state transitions.
+  async function dialNumber(rawNumber: string) {
     playTap();
     setCallError(null);
     setPhoneError(null);
 
-    const normalized = normalizePhoneNumber(phoneNumber);
+    const normalized = normalizePhoneNumber(rawNumber);
     if (!isValidE164(normalized)) {
       setPhoneError("Enter the number in international format, e.g. +12065551234");
       return;
     }
 
-    if (!deviceRef.current || micPermission !== "granted") return;
+    setPhoneNumber(normalized);
+
+    if (callStatus !== "ready" || !deviceRef.current || micPermission !== "granted") return;
 
     try {
       setCallStatus("connecting");
@@ -421,6 +509,11 @@ export default function Dialer() {
       setCallError(err instanceof Error ? err.message : "Could not start the call.");
       resetAfterCall();
     }
+  }
+
+  async function handleCall(e: React.FormEvent) {
+    e.preventDefault();
+    await dialNumber(phoneNumber);
   }
 
   function handleHangUp() {
@@ -457,6 +550,79 @@ export default function Dialer() {
       await deviceRef.current?.audio?.speakerDevices.set(id);
     } catch {
       // Non-critical; audio keeps routing to whatever device was active.
+    }
+  }
+
+  function handleAddContact(e: React.FormEvent) {
+    e.preventDefault();
+    playTap();
+    setContactFormError(null);
+
+    const name = newContactName.trim();
+    const normalized = normalizePhoneNumber(newContactNumber);
+
+    if (!name) {
+      setContactFormError("Enter a name.");
+      return;
+    }
+    if (!isValidE164(normalized)) {
+      setContactFormError("Enter the number in international format, e.g. +12065551234");
+      return;
+    }
+
+    const next = [...contacts, { id: crypto.randomUUID(), name, number: normalized }];
+    setContacts(next);
+    saveContacts(next);
+    setNewContactName("");
+    setNewContactNumber("");
+  }
+
+  function handleDeleteContact(id: string) {
+    const next = contacts.filter((c) => c.id !== id);
+    setContacts(next);
+    saveContacts(next);
+  }
+
+  async function handleSendMessage(e: React.FormEvent) {
+    e.preventDefault();
+    playTap();
+    setSmsError(null);
+
+    const normalized = normalizePhoneNumber(messageTo);
+    if (!isValidE164(normalized)) {
+      setSmsError("Enter the number in international format, e.g. +12065551234");
+      return;
+    }
+    const body = messageBody.trim();
+    if (!body) {
+      setSmsError("Message cannot be empty.");
+      return;
+    }
+
+    const accessCode = sessionStorage.getItem(STORAGE_KEY);
+    if (!accessCode) {
+      setSmsError("Your session expired. Please sign out and enter the access code again.");
+      return;
+    }
+
+    setSendingMessage(true);
+    try {
+      const res = await fetch("/api/sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessCode, to: normalized, message: body }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { sid?: string; status?: string; error?: string };
+      if (!res.ok || !data.sid) {
+        throw new Error(data.error || "Failed to send message.");
+      }
+      const entry: SentMessage = { id: data.sid, to: normalized, body, status: data.status || "sent", sentAt: Date.now() };
+      setMessageLog(appendMessageLog(entry));
+      setMessageBody("");
+    } catch (err) {
+      setSmsError(err instanceof Error ? err.message : "Failed to send message.");
+    } finally {
+      setSendingMessage(false);
     }
   }
 
@@ -518,152 +684,284 @@ export default function Dialer() {
 
   return (
     <Shell>
-      <div className={CARD_CLASS}>
-        <Logo />
-        <div className="mt-4 flex items-center justify-between">
-          <h1 className="text-lg font-semibold tracking-wide text-slate-900 dark:text-white">
-            BUSINESS <span className="text-[#C0272D]">CALLER</span>
-          </h1>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            disabled={canHangUp}
-            className="text-xs font-medium text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-500 dark:hover:text-slate-300"
-          >
-            Sign out
-          </button>
-        </div>
-        <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/50 px-2.5 py-1 text-xs font-medium text-slate-500 backdrop-blur-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-400">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#C0272D]" />
-          Calling from {DISPLAY_CALLER_ID}
-        </p>
+      <div className="flex w-full max-w-6xl flex-col items-center gap-6 lg:flex-row lg:items-start lg:justify-center">
+        {/* Messages panel - desktop only */}
+        <div className="order-2 hidden w-full max-w-xs shrink-0 lg:order-1 lg:block">
+          <div className={SIDE_PANEL_CLASS}>
+            <h2 className={PANEL_HEADING_CLASS}>Messages</h2>
+            <form onSubmit={handleSendMessage} className="mt-3 space-y-2">
+              <input
+                type="tel"
+                inputMode="tel"
+                value={messageTo}
+                onChange={(e) => {
+                  setMessageTo(e.target.value);
+                  setSmsError(null);
+                }}
+                placeholder="+1 555 123 4567"
+                className={COMPACT_INPUT_CLASS}
+                aria-label="Message recipient"
+              />
+              <textarea
+                value={messageBody}
+                onChange={(e) => setMessageBody(e.target.value)}
+                placeholder="Type a message…"
+                rows={3}
+                maxLength={MAX_SMS_LENGTH}
+                className={`${COMPACT_INPUT_CLASS} resize-none`}
+                aria-label="Message body"
+              />
+              <div className="text-right text-[11px] text-slate-400 dark:text-slate-500">
+                {messageBody.length}/{MAX_SMS_LENGTH}
+              </div>
+              {smsError && <p className={COMPACT_ERROR_CLASS}>{smsError}</p>}
+              <button
+                type="submit"
+                disabled={sendingMessage || !messageTo.trim() || !messageBody.trim()}
+                className={SMALL_BUTTON_CLASS}
+              >
+                {sendingMessage ? "Sending…" : "Send SMS"}
+              </button>
+            </form>
 
-        <div className={`mt-4 grid gap-2 ${outputSelectionSupported ? "grid-cols-2" : "grid-cols-1"}`}>
-          <div className="relative">
-            <MicIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-            <select
-              aria-label="Microphone"
-              value={selectedInputId}
-              onChange={(e) => handleInputDeviceChange(e.target.value)}
-              disabled={inputDevices.length === 0}
-              className={SELECT_CLASS}
-            >
-              {inputDevices.length === 0 && <option>Default microphone</option>}
-              {inputDevices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || "Microphone"}
-                </option>
-              ))}
-            </select>
-            <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+            {messageLog.length > 0 && (
+              <div className="mt-5 max-h-64 space-y-2 overflow-y-auto border-t border-slate-900/5 pt-4 dark:border-white/5">
+                {messageLog.map((m) => (
+                  <div
+                    key={m.id}
+                    className="rounded-xl border border-white/50 bg-white/40 px-3 py-2 text-xs dark:border-white/5 dark:bg-white/[0.03]"
+                  >
+                    <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
+                      <span className="font-medium">{m.to}</span>
+                      <span>{new Date(m.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
+                    <p className="mt-1 text-slate-700 dark:text-slate-200">{m.body}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+        </div>
 
-          {outputSelectionSupported && (
+        {/* Dialer */}
+        <div className={`order-1 mx-auto shrink-0 lg:order-2 ${CARD_CLASS}`}>
+          <Logo />
+          <div className="mt-4 flex items-center justify-between">
+            <h1 className="text-lg font-semibold tracking-wide text-slate-900 dark:text-white">
+              BUSINESS <span className="text-[#C0272D]">CALLER</span>
+            </h1>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              disabled={canHangUp}
+              className="text-xs font-medium text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-500 dark:hover:text-slate-300"
+            >
+              Sign out
+            </button>
+          </div>
+          <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/50 px-2.5 py-1 text-xs font-medium text-slate-500 backdrop-blur-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#C0272D]" />
+            Calling from {DISPLAY_CALLER_ID}
+          </p>
+
+          <div className={`mt-4 grid gap-2 ${outputSelectionSupported ? "grid-cols-2" : "grid-cols-1"}`}>
             <div className="relative">
-              <SpeakerIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <MicIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <select
-                aria-label="Speaker"
-                value={selectedOutputId}
-                onChange={(e) => handleOutputDeviceChange(e.target.value)}
-                disabled={outputDevices.length === 0}
+                aria-label="Microphone"
+                value={selectedInputId}
+                onChange={(e) => handleInputDeviceChange(e.target.value)}
+                disabled={inputDevices.length === 0}
                 className={SELECT_CLASS}
               >
-                {outputDevices.length === 0 && <option>Default speaker</option>}
-                {outputDevices.map((d) => (
+                {inputDevices.length === 0 && <option>Default microphone</option>}
+                {inputDevices.map((d) => (
                   <option key={d.deviceId} value={d.deviceId}>
-                    {d.label || "Speaker"}
+                    {d.label || "Microphone"}
                   </option>
                 ))}
               </select>
               <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
             </div>
+
+            {outputSelectionSupported && (
+              <div className="relative">
+                <SpeakerIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <select
+                  aria-label="Speaker"
+                  value={selectedOutputId}
+                  onChange={(e) => handleOutputDeviceChange(e.target.value)}
+                  disabled={outputDevices.length === 0}
+                  className={SELECT_CLASS}
+                >
+                  {outputDevices.length === 0 && <option>Default speaker</option>}
+                  {outputDevices.map((d) => (
+                    <option key={d.deviceId} value={d.deviceId}>
+                      {d.label || "Speaker"}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handleCall} className="mt-5">
+            <label htmlFor="phoneNumber" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+              Phone Number
+            </label>
+            <input
+              id="phoneNumber"
+              type="tel"
+              inputMode="tel"
+              value={phoneNumber}
+              onChange={(e) => {
+                setPhoneNumber(e.target.value);
+                setPhoneError(null);
+              }}
+              disabled={callStatus !== "ready"}
+              className={INPUT_CLASS}
+              placeholder="+1 555 123 4567"
+            />
+            {phoneError && (
+              <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{phoneError}</p>
+            )}
+
+            <button type="submit" disabled={!canCall} className={CALL_BUTTON_CLASS}>
+              Call
+            </button>
+
+            <button type="button" onClick={handleHangUp} disabled={!canHangUp} className={HANGUP_BUTTON_CLASS}>
+              Hang Up
+            </button>
+          </form>
+
+          {callStatus === "in-call" && (
+            <div className="mt-4 flex gap-2">
+              <button type="button" onClick={handleToggleMute} className={muted ? ICON_BUTTON_ACTIVE_CLASS : ICON_BUTTON_CLASS}>
+                <MicOffIcon className="h-4 w-4" />
+                {muted ? "Muted" : "Mute"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  playTap();
+                  setKeypadOpen((v) => !v);
+                }}
+                className={keypadOpen ? ICON_BUTTON_ACTIVE_CLASS : ICON_BUTTON_CLASS}
+              >
+                <KeypadIcon className="h-4 w-4" />
+                Keypad
+              </button>
+            </div>
           )}
+
+          {callStatus === "in-call" && keypadOpen && (
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {KEYPAD_DIGITS.map((digit) => (
+                <button key={digit} type="button" onClick={() => handleKeypadPress(digit)} className={KEYPAD_BUTTON_CLASS}>
+                  {digit}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {callError && <p className={`mt-4 ${ERROR_BANNER_CLASS}`}>{callError}</p>}
+
+          {micPermission === "denied" && (
+            <p className="mt-4 rounded-2xl border border-amber-200/60 bg-amber-50/80 px-3 py-2 text-sm text-amber-800 backdrop-blur-sm dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300">
+              Microphone access is blocked. Allow microphone access for this site in your
+              browser&apos;s settings, then reload the page.
+            </p>
+          )}
+
+          <div className="mt-6 flex items-center justify-center gap-2 border-t border-slate-900/5 pt-4 dark:border-white/5">
+            <span
+              className={`h-2.5 w-2.5 rounded-full transition-all ${
+                callStatus === "in-call"
+                  ? "bg-emerald-500 shadow-[0_0_10px_3px_rgba(16,185,129,0.6)]"
+                  : micPermission === "denied"
+                    ? "bg-red-500 shadow-[0_0_10px_3px_rgba(239,68,68,0.5)]"
+                    : callStatus === "ready"
+                      ? "bg-slate-300 dark:bg-slate-600"
+                      : "animate-pulse bg-amber-500 shadow-[0_0_10px_3px_rgba(245,158,11,0.5)]"
+              }`}
+            />
+            <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              Status: {statusLabel}
+            </p>
+          </div>
         </div>
 
-        <form onSubmit={handleCall} className="mt-5">
-          <label htmlFor="phoneNumber" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-            Phone Number
-          </label>
-          <input
-            id="phoneNumber"
-            type="tel"
-            inputMode="tel"
-            value={phoneNumber}
-            onChange={(e) => {
-              setPhoneNumber(e.target.value);
-              setPhoneError(null);
-            }}
-            disabled={callStatus !== "ready"}
-            className={INPUT_CLASS}
-            placeholder="+1 555 123 4567"
-          />
-          {phoneError && (
-            <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{phoneError}</p>
-          )}
+        {/* Phone book panel - desktop only */}
+        <div className="order-3 hidden w-full max-w-xs shrink-0 lg:block">
+          <div className={SIDE_PANEL_CLASS}>
+            <h2 className={PANEL_HEADING_CLASS}>Phone Book</h2>
 
-          <button type="submit" disabled={!canCall} className={CALL_BUTTON_CLASS}>
-            Call
-          </button>
+            <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+              {contacts.length === 0 && (
+                <p className="text-xs text-slate-400 dark:text-slate-500">No saved contacts yet.</p>
+              )}
+              {contacts.map((c) => (
+                <div key={c.id} className={CONTACT_ROW_CLASS}>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{c.name}</p>
+                    <p className="truncate text-xs text-slate-400 dark:text-slate-500">{c.number}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => dialNumber(c.number)}
+                      className={MINI_ICON_BUTTON_CLASS}
+                      aria-label={`Call ${c.name}`}
+                    >
+                      <PhoneIcon className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMessageTo(c.number)}
+                      className={MINI_ICON_BUTTON_CLASS}
+                      aria-label={`Message ${c.name}`}
+                    >
+                      <MessageIcon className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteContact(c.id)}
+                      className={MINI_ICON_BUTTON_CLASS}
+                      aria-label={`Delete ${c.name}`}
+                    >
+                      <TrashIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
 
-          <button type="button" onClick={handleHangUp} disabled={!canHangUp} className={HANGUP_BUTTON_CLASS}>
-            Hang Up
-          </button>
-        </form>
-
-        {callStatus === "in-call" && (
-          <div className="mt-4 flex gap-2">
-            <button type="button" onClick={handleToggleMute} className={muted ? ICON_BUTTON_ACTIVE_CLASS : ICON_BUTTON_CLASS}>
-              <MicOffIcon className="h-4 w-4" />
-              {muted ? "Muted" : "Mute"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                playTap();
-                setKeypadOpen((v) => !v);
-              }}
-              className={keypadOpen ? ICON_BUTTON_ACTIVE_CLASS : ICON_BUTTON_CLASS}
-            >
-              <KeypadIcon className="h-4 w-4" />
-              Keypad
-            </button>
-          </div>
-        )}
-
-        {callStatus === "in-call" && keypadOpen && (
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {KEYPAD_DIGITS.map((digit) => (
-              <button key={digit} type="button" onClick={() => handleKeypadPress(digit)} className={KEYPAD_BUTTON_CLASS}>
-                {digit}
+            <form onSubmit={handleAddContact} className="mt-4 space-y-2 border-t border-slate-900/5 pt-4 dark:border-white/5">
+              <input
+                value={newContactName}
+                onChange={(e) => setNewContactName(e.target.value)}
+                placeholder="Name"
+                className={COMPACT_INPUT_CLASS}
+                aria-label="Contact name"
+              />
+              <input
+                value={newContactNumber}
+                onChange={(e) => setNewContactNumber(e.target.value)}
+                placeholder="+1 555 123 4567"
+                className={COMPACT_INPUT_CLASS}
+                aria-label="Contact number"
+              />
+              {contactFormError && <p className={COMPACT_ERROR_CLASS}>{contactFormError}</p>}
+              <button type="submit" className={SMALL_BUTTON_CLASS}>
+                <span className="inline-flex items-center justify-center gap-1.5">
+                  <PlusIcon className="h-3.5 w-3.5" />
+                  Add Contact
+                </span>
               </button>
-            ))}
+            </form>
           </div>
-        )}
-
-        {callError && <p className={`mt-4 ${ERROR_BANNER_CLASS}`}>{callError}</p>}
-
-        {micPermission === "denied" && (
-          <p className="mt-4 rounded-2xl border border-amber-200/60 bg-amber-50/80 px-3 py-2 text-sm text-amber-800 backdrop-blur-sm dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300">
-            Microphone access is blocked. Allow microphone access for this site in your
-            browser&apos;s settings, then reload the page.
-          </p>
-        )}
-
-        <div className="mt-6 flex items-center justify-center gap-2 border-t border-slate-900/5 pt-4 dark:border-white/5">
-          <span
-            className={`h-2.5 w-2.5 rounded-full transition-all ${
-              callStatus === "in-call"
-                ? "bg-emerald-500 shadow-[0_0_10px_3px_rgba(16,185,129,0.6)]"
-                : micPermission === "denied"
-                  ? "bg-red-500 shadow-[0_0_10px_3px_rgba(239,68,68,0.5)]"
-                  : callStatus === "ready"
-                    ? "bg-slate-300 dark:bg-slate-600"
-                    : "animate-pulse bg-amber-500 shadow-[0_0_10px_3px_rgba(245,158,11,0.5)]"
-            }`}
-          />
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
-            Status: {statusLabel}
-          </p>
         </div>
       </div>
     </Shell>

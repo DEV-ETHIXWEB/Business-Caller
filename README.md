@@ -128,6 +128,21 @@ Click **Save**.
 Send Amar two things: the Vercel URL and the access code. That's all he
 needs — no installs, no SIM card, just a laptop with a mic and a browser.
 
+## Extra features
+
+- **Microphone / speaker picker** — appears above the phone number field.
+  Bluetooth headsets show up automatically once paired with the OS; no
+  extra setup.
+- **Mute + keypad** — appear once a call connects, for muting and for
+  entering digits into an IVR.
+- **Phone Book** (desktop only, right side) and **Messages/SMS** (desktop
+  only, left side). Contacts are saved in the browser's local storage —
+  private to that one browser/laptop, not synced anywhere. Sending SMS
+  requires **SMS capability enabled** on `+12064523433` in the Twilio
+  Console (Phone Numbers → your number → check the "SMS" capability is
+  on) — if it's off, sends will fail with a clear error. No extra env
+  vars needed; `/api/sms` reuses the same credentials as everything else.
+
 ## Environment variables reference
 
 | Variable | Where it comes from | Secret? |
@@ -150,13 +165,16 @@ any of the "Yes" rows in frontend code, or paste them anywhere public.
 app/
   page.tsx                 Renders the dialer
   layout.tsx
-  components/Dialer.tsx    All dialer UI + Twilio Device logic (client-side)
+  components/Dialer.tsx    All dialer/phonebook/messaging UI + Twilio Device logic (client-side)
   api/token/route.ts       Mints Twilio Access Tokens (server-side, gated by APP_ACCESS_CODE)
   api/voice/route.ts       TwiML webhook Twilio calls to place the outbound leg
+  api/sms/route.ts         Sends outbound SMS via the Twilio REST API (server-side, same gate)
 lib/
+  auth.ts                  Shared access-code verification (used by /api/token and /api/sms)
   constants.ts             Shared agent identity string
   phone.ts                 E.164 validation/normalization, shared client+server
   rateLimit.ts             In-memory best-effort rate limiter
+  localStore.ts            Browser-local contacts + sent-message log (localStorage, not synced)
 .env.example               Template — copy to .env.local, never commit the real one
 ```
 
