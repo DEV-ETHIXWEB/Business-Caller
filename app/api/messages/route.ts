@@ -25,6 +25,8 @@ const REQUIRED_ENV_VARS = [
   "APP_ACCESS_CODE",
 ] as const;
 
+const MESSAGE_SID_PATTERN = /^SM[0-9a-fA-F]{32}$/;
+
 export async function POST(req: Request) {
   for (const key of REQUIRED_ENV_VARS) {
     if (!process.env[key]) {
@@ -98,5 +100,65 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("[api/messages] Twilio fetch failed:", err);
     return NextResponse.json({ error: "Failed to load messages." }, { status: 502 });
+  }
+}
+
+// Deletes a single message. This calls Twilio's own delete on the Message
+// resource - the message is permanently removed from Twilio's records, not
+// just hidden in this UI. There is nothing to undo this with.
+export async function DELETE(req: Request) {
+  for (const key of REQUIRED_ENV_VARS) {
+    if (!process.env[key]) {
+      console.error(`[api/messages] Missing required environment variable: ${key}`);
+      return NextResponse.json(
+        { error: "Server misconfiguration. Please contact the administrator." },
+        { status: 500 },
+      );
+    }
+  }
+
+  const ip = getClientIp(req);
+  const limit = rateLimit(`messages-delete:${ip}`, 30, IP_RATE_WINDOW_MS);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a few minutes and try again." },
+      {
+        status: 429,
+        headers: { "Retry-After": Math.ceil(limit.retryAfterMs / 1000).toString() },
+      },
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  const fields = (body ?? {}) as Record<string, unknown>;
+  const accessCode = typeof fields.accessCode === "string" ? fields.accessCode : "";
+  if (!accessCode || !verifyAccessCode(accessCode, process.env.APP_ACCESS_CODE!)) {
+    return NextResponse.json({ error: "Invalid access code." }, { status: 401 });
+  }
+
+  const sid = typeof fields.sid === "string" ? fields.sid : "";
+  if (!MESSAGE_SID_PATTERN.test(sid)) {
+    return NextResponse.json({ error: "Invalid message SID." }, { status: 400 });
+  }
+
+  const client = twilio(process.env.TWILIO_API_KEY_SID!, process.env.TWILIO_API_KEY_SECRET!, {
+    accountSid: process.env.TWILIO_ACCOUNT_SID!,
+  });
+
+  try {
+    // client.messages(sid).remove() is scoped to our own authenticated
+    // Twilio account, so this can only ever delete a message that already
+    // belongs to it - Twilio 404s for any SID it doesn't own.
+    await client.messages(sid).remove();
+    return NextResponse.json({ deleted: true });
+  } catch (err) {
+    console.error("[api/messages] Twilio delete failed:", err);
+    return NextResponse.json({ error: "Failed to delete message." }, { status: 502 });
   }
 }

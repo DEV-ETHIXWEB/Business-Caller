@@ -744,6 +744,54 @@ export default function Dialer() {
     }
   }
 
+  // Deleting a message calls Twilio's own delete - it's permanently removed
+  // from Twilio's records, not just hidden here, so both of these confirm
+  // before doing anything irreversible.
+  async function handleDeleteMessage(sid: string) {
+    if (!threadNumber) return;
+    if (!window.confirm("Delete this message? This permanently removes it from Twilio's records and can't be undone.")) {
+      return;
+    }
+    playTap();
+    const accessCode = sessionStorage.getItem(STORAGE_KEY);
+    if (!accessCode) return;
+    try {
+      await fetch("/api/messages", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessCode, sid }),
+      });
+    } catch {
+      // Best-effort; the refresh below shows whatever Twilio actually has.
+    }
+    await fetchThread(threadNumber);
+  }
+
+  async function handleDeleteConversation(number: string) {
+    const label = contacts.find((c) => c.number === number)?.name ?? number;
+    if (
+      !window.confirm(
+        `Delete the entire conversation with ${label}? This permanently removes every message with this number from Twilio's records and can't be undone.`,
+      )
+    ) {
+      return;
+    }
+    playTap();
+    const accessCode = sessionStorage.getItem(STORAGE_KEY);
+    if (!accessCode) return;
+    try {
+      await fetch("/api/conversations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessCode, with: number }),
+      });
+    } catch {
+      // Best-effort; the refresh below shows whatever Twilio actually has.
+    }
+    if (threadNumber === number) setMessageTo("");
+    await fetchConversations();
+  }
+
   const canCall = deviceReady && micPermission === "granted" && callStatus === "ready" && phoneNumber.trim().length > 0;
   const canHangUp = callStatus === "connecting" || callStatus === "ringing" || callStatus === "in-call";
 
@@ -816,17 +864,16 @@ export default function Dialer() {
               <p className="p-2 text-center text-xs text-slate-400 dark:text-slate-500">No conversations yet.</p>
             )}
             {conversations.map((c) => (
-              <button
-                key={c.number}
-                type="button"
-                onClick={() => {
-                  playTap();
-                  setMessageTo(c.number);
-                  setMobileTab("messages");
-                }}
-                className={CONVERSATION_ROW_CLASS}
-              >
-                <div className="min-w-0">
+              <div key={c.number} className={CONVERSATION_ROW_CLASS}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playTap();
+                    setMessageTo(c.number);
+                    setMobileTab("messages");
+                  }}
+                  className="min-w-0 flex-1 text-left"
+                >
                   <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
                     {contacts.find((ct) => ct.number === c.number)?.name ?? c.number}
                   </p>
@@ -834,11 +881,21 @@ export default function Dialer() {
                     {c.lastDirection === "outbound" ? "You: " : ""}
                     {c.lastBody}
                   </p>
+                </button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                    {new Date(c.lastAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteConversation(c.number)}
+                    className={MINI_ICON_BUTTON_CLASS}
+                    aria-label={`Delete conversation with ${contacts.find((ct) => ct.number === c.number)?.name ?? c.number}`}
+                  >
+                    <TrashIcon className="h-3 w-3" />
+                  </button>
                 </div>
-                <span className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500">
-                  {new Date(c.lastAt).toLocaleDateString([], { month: "short", day: "numeric" })}
-                </span>
-              </button>
+              </div>
             ))}
           </div>
         </>
@@ -861,9 +918,19 @@ export default function Dialer() {
                   }`}
                 >
                   <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                  <p className={`mt-0.5 text-[10px] ${m.direction === "outbound" ? "text-white/70" : "text-slate-400 dark:text-slate-500"}`}>
-                    {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </p>
+                  <div
+                    className={`mt-0.5 flex items-center gap-1.5 text-[10px] ${m.direction === "outbound" ? "text-white/70" : "text-slate-400 dark:text-slate-500"}`}
+                  >
+                    <span>{new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMessage(m.sid)}
+                      className="opacity-60 transition-opacity hover:opacity-100"
+                      aria-label="Delete message"
+                    >
+                      <TrashIcon className="h-2.5 w-2.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

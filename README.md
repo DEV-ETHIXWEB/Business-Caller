@@ -151,6 +151,11 @@ needs — no installs, no SIM card, just a laptop with a mic and a browser.
   **On mobile**, tap the ☰ menu (top-left) to open them in a slide-in
   drawer with tabs — full functionality, just tucked away since there's
   no spare screen width.
+- **Deleting messages/conversations** — the small trash icon on a
+  conversation row or on an individual message deletes it. This calls
+  Twilio's own delete on the Message resource, so it's a real, permanent
+  removal from Twilio's records (not just hidden in this UI) — there's a
+  confirmation prompt first since it can't be undone.
 - Sending SMS requires **SMS capability enabled** on `+12064523433` in the
   Twilio Console (Phone Numbers → your number → check the "SMS"
   capability is on) — if it's off, sends fail with a clear error. No
