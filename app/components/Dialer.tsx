@@ -200,6 +200,15 @@ function ArrowLeftIcon({ className }: { className?: string }) {
   );
 }
 
+function ArrowRightIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </svg>
+  );
+}
+
 function MenuIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -404,11 +413,14 @@ export default function Dialer() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<"messages" | "phonebook">("messages");
 
-  // A complete, valid number in the "to" field means there's an active
-  // thread to show/poll; anything else (empty, still being typed) means the
-  // conversation list is shown instead.
-  const threadNumber = isValidE164(normalizePhoneNumber(messageTo)) ? normalizePhoneNumber(messageTo) : null;
-  const threadContactName = threadNumber ? contacts.find((c) => c.number === threadNumber)?.name : undefined;
+  // Which conversation (if any) is open. Deliberately NOT derived from
+  // messageTo on every keystroke - a partial, still-being-typed number can
+  // already satisfy the E.164 length check (7+ digits) before the user is
+  // done typing, which used to flip the view to "thread" mid-keystroke and
+  // yank the input out from under them. This is only ever set explicitly:
+  // submitting the "new message" number, or clicking a conversation/contact.
+  const [activeThread, setActiveThread] = useState<string | null>(null);
+  const threadContactName = activeThread ? contacts.find((c) => c.number === activeThread)?.name : undefined;
 
   // Keep the conversation pinned to the latest message as new ones arrive
   // from polling or are sent.
@@ -673,18 +685,18 @@ export default function Dialer() {
   }, []);
 
   useEffect(() => {
-    if (!unlocked || !threadNumber) return;
+    if (!unlocked || !activeThread) return;
 
     // Deferred via setTimeout/setInterval (rather than called directly) so
     // the fetch - and the setState calls inside it - never run synchronously
     // within this effect's own call stack.
-    const initial = setTimeout(() => fetchThread(threadNumber), 0);
-    const interval = setInterval(() => fetchThread(threadNumber), 5000);
+    const initial = setTimeout(() => fetchThread(activeThread), 0);
+    const interval = setInterval(() => fetchThread(activeThread), 5000);
     return () => {
       clearTimeout(initial);
       clearInterval(interval);
     };
-  }, [unlocked, threadNumber, fetchThread]);
+  }, [unlocked, activeThread, fetchThread]);
 
   // The conversation list (the "inbox" view shown when no thread is open)
   // is fetched once whenever it becomes visible, not polled continuously -
@@ -712,10 +724,10 @@ export default function Dialer() {
   }, []);
 
   useEffect(() => {
-    if (!unlocked || threadNumber) return;
+    if (!unlocked || activeThread) return;
     const timer = setTimeout(() => fetchConversations(), 0);
     return () => clearTimeout(timer);
-  }, [unlocked, threadNumber, fetchConversations]);
+  }, [unlocked, activeThread, fetchConversations]);
 
   // Contacts are shared across every device via app/api/contacts/route.ts -
   // fetched once on unlock, then re-fetched after every add/delete so this
@@ -936,6 +948,7 @@ export default function Dialer() {
     setInputDevices([]);
     setOutputDevices([]);
     setMessageTo("");
+    setActiveThread(null);
     setMessageBody("");
     setSmsError(null);
     setMobileMenuOpen(false);
@@ -1052,7 +1065,10 @@ export default function Dialer() {
     if (!ok) await fetchContacts();
   }
 
-  async function handleSendMessage(e: React.FormEvent) {
+  // Confirms the number typed into the "new message" box and opens it as a
+  // thread - the only way a typed number becomes active, so nothing happens
+  // while the user is still mid-keystroke.
+  function handleOpenThread(e: React.FormEvent) {
     e.preventDefault();
     playTap();
     setSmsError(null);
@@ -1062,6 +1078,16 @@ export default function Dialer() {
       setSmsError("Enter the number in international format, e.g. +12065551234");
       return;
     }
+    setMessageTo(normalized);
+    setActiveThread(normalized);
+  }
+
+  async function handleSendMessage(e: React.FormEvent) {
+    e.preventDefault();
+    playTap();
+    setSmsError(null);
+
+    if (!activeThread) return;
     const body = messageBody.trim();
     if (!body) {
       setSmsError("Message cannot be empty.");
@@ -1079,7 +1105,7 @@ export default function Dialer() {
       const res = await fetch("/api/sms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessCode, to: normalized, message: body }),
+        body: JSON.stringify({ accessCode, to: activeThread, message: body }),
       });
       const data = (await res.json().catch(() => ({}))) as { sid?: string; status?: string; error?: string };
       if (!res.ok || !data.sid) {
@@ -1088,7 +1114,7 @@ export default function Dialer() {
       setMessageBody("");
       // Pull the thread again immediately rather than waiting for the next
       // poll tick, so the just-sent message appears right away.
-      await fetchThread(normalized);
+      await fetchThread(activeThread);
     } catch (err) {
       setSmsError(err instanceof Error ? err.message : "Failed to send message.");
     } finally {
@@ -1100,7 +1126,7 @@ export default function Dialer() {
   // from Twilio's records, not just hidden here, so both of these confirm
   // before doing anything irreversible.
   async function handleDeleteMessage(sid: string) {
-    if (!threadNumber) return;
+    if (!activeThread) return;
     if (!window.confirm("Delete this message? This permanently removes it from Twilio's records and can't be undone.")) {
       return;
     }
@@ -1116,7 +1142,7 @@ export default function Dialer() {
     } catch {
       // Best-effort; the refresh below shows whatever Twilio actually has.
     }
-    await fetchThread(threadNumber);
+    await fetchThread(activeThread);
   }
 
   async function handleDeleteConversation(number: string) {
@@ -1140,7 +1166,10 @@ export default function Dialer() {
     } catch {
       // Best-effort; the refresh below shows whatever Twilio actually has.
     }
-    if (threadNumber === number) setMessageTo("");
+    if (activeThread === number) {
+      setMessageTo("");
+      setActiveThread(null);
+    }
     await fetchConversations();
   }
 
@@ -1172,12 +1201,13 @@ export default function Dialer() {
   const messagesPanelBody = (
     <div className={`${SIDE_PANEL_CLASS} flex min-h-0 flex-1 flex-col`}>
       <div className="flex items-center gap-2">
-        {threadNumber && (
+        {activeThread && (
           <button
             type="button"
             onClick={() => {
               playTap();
               setMessageTo("");
+              setActiveThread(null);
               setSmsError(null);
             }}
             className={MINI_ICON_BUTTON_CLASS}
@@ -1187,27 +1217,35 @@ export default function Dialer() {
           </button>
         )}
         <h2 className={`${PANEL_HEADING_CLASS} truncate`}>
-          {threadNumber ? (threadContactName ?? threadNumber) : "Messages"}
+          {activeThread ? (threadContactName ?? activeThread) : "Messages"}
         </h2>
-        {threadNumber && messagesLoading && (
+        {activeThread && messagesLoading && (
           <span className="ml-auto shrink-0 text-[10px] text-slate-400 dark:text-slate-500">syncing…</span>
         )}
       </div>
 
-      {!threadNumber ? (
+      {!activeThread ? (
         <>
-          <input
-            type="tel"
-            inputMode="tel"
-            value={messageTo}
-            onChange={(e) => {
-              setMessageTo(e.target.value);
-              setSmsError(null);
-            }}
-            placeholder="New message: +1 555 123 4567"
-            className={`mt-3 ${COMPACT_INPUT_CLASS}`}
-            aria-label="Message recipient"
-          />
+          <form onSubmit={handleOpenThread} className="mt-3">
+            <div className="flex gap-2">
+              <input
+                type="tel"
+                inputMode="tel"
+                value={messageTo}
+                onChange={(e) => {
+                  setMessageTo(e.target.value);
+                  setSmsError(null);
+                }}
+                placeholder="New message: +1 555 123 4567"
+                className={`flex-1 ${COMPACT_INPUT_CLASS}`}
+                aria-label="Message recipient"
+              />
+              <button type="submit" className={MINI_ICON_BUTTON_CLASS} aria-label="Open conversation">
+                <ArrowRightIcon className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {smsError && <p className={`mt-1.5 ${COMPACT_ERROR_CLASS}`}>{smsError}</p>}
+          </form>
           <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto">
             {conversationsLoading && conversations.length === 0 && (
               <p className="p-2 text-center text-xs text-slate-400 dark:text-slate-500">Loading…</p>
@@ -1222,6 +1260,7 @@ export default function Dialer() {
                   onClick={() => {
                     playTap();
                     setMessageTo(c.number);
+                    setActiveThread(c.number);
                     setMobileTab("messages");
                   }}
                   className="min-w-0 flex-1 text-left"
@@ -1345,6 +1384,7 @@ export default function Dialer() {
                 onClick={() => {
                   playTap();
                   setMessageTo(c.number);
+                  setActiveThread(c.number);
                   setMobileTab("messages");
                 }}
                 className={MINI_ICON_BUTTON_CLASS}
