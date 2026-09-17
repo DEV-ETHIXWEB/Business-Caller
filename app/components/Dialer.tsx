@@ -94,6 +94,12 @@ function clearSession() {
 type CallStatus = "ready" | "connecting" | "ringing" | "in-call" | "wrapping-up";
 type MicPermission = "checking" | "granted" | "denied";
 
+interface CallParticipant {
+  callSid: string;
+  number: string;
+  onHold: boolean;
+}
+
 interface DeviceErrorLike {
   code?: number;
   message?: string;
@@ -241,6 +247,35 @@ function BackspaceIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M9 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6.5-7Z" />
       <path d="M13 10l4 4M17 10l-4 4" />
+    </svg>
+  );
+}
+
+function PauseIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <rect x="6" y="5" width="4" height="14" rx="1" />
+      <rect x="14" y="5" width="4" height="14" rx="1" />
+    </svg>
+  );
+}
+
+function PersonPlusIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+      <path d="M18 8v6M15 11h6" />
+    </svg>
+  );
+}
+
+function MergeIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M6 4v6a4 4 0 0 0 4 4h4" />
+      <path d="M14 10l4 4-4 4" />
+      <path d="M6 20v-6" />
     </svg>
   );
 }
@@ -574,6 +609,18 @@ export default function Dialer() {
   const [muted, setMuted] = useState(false);
   const [keypadOpen, setKeypadOpen] = useState(false);
 
+  // Hold / Add Call / Merge - see lib/conference.ts for how a plain call
+  // gets lazily upgraded into a Twilio Conference the first time any of
+  // these is used. browserCallSid is this call's own CallSid, known once
+  // the Voice SDK's Call object reports it (right around when it connects).
+  const [browserCallSid, setBrowserCallSid] = useState("");
+  const [inConference, setInConference] = useState(false);
+  const [conferenceParticipants, setConferenceParticipants] = useState<CallParticipant[]>([]);
+  const [callActionBusy, setCallActionBusy] = useState(false);
+  const [callActionError, setCallActionError] = useState<string | null>(null);
+  const [addCallOpen, setAddCallOpen] = useState(false);
+  const [addCallNumber, setAddCallNumber] = useState("");
+
   // Contacts are stored server-side (see app/api/contacts/route.ts) so the
   // same Phone Book shows up on every device, not just whichever browser
   // added a contact - fetched once unlocked, below.
@@ -690,6 +737,12 @@ export default function Dialer() {
     setMuted(false);
     setKeypadOpen(false);
     setDialOverlayOpen(false);
+    setBrowserCallSid("");
+    setInConference(false);
+    setConferenceParticipants([]);
+    setCallActionError(null);
+    setAddCallOpen(false);
+    setAddCallNumber("");
     callRef.current = null;
   }, [stopTimer]);
 
@@ -698,6 +751,7 @@ export default function Dialer() {
       call.on("ringing", () => setCallStatus("ringing"));
       call.on("accept", () => {
         setCallStatus("in-call");
+        setBrowserCallSid(call.parameters.CallSid ?? "");
         startTimer();
       });
       call.on("disconnect", () => resetAfterCall());
@@ -992,6 +1046,123 @@ export default function Dialer() {
     const timer = setTimeout(() => fetchCallLog(), 0);
     return () => clearTimeout(timer);
   }, [unlocked, activeTab, callStatus, fetchCallLog]);
+
+  // Whether this call has been upgraded to a Twilio Conference yet (Hold or
+  // Add Call used at least once - see lib/conference.ts) and, if so, who
+  // else is on it and their hold state. Polled rather than pushed, since
+  // Twilio's conference events land on the server, not the browser.
+  const fetchCallStatus = useCallback(async () => {
+    const saved = loadSession();
+    if (!saved || !browserCallSid) return;
+    try {
+      const res = await fetch("/api/calls/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...saved, browserCallSid }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        inConference?: boolean;
+        participants?: CallParticipant[];
+      };
+      if (res.ok) {
+        setInConference(Boolean(data.inConference));
+        setConferenceParticipants(data.participants ?? []);
+      }
+    } catch {
+      // Silent - the next poll tick retries.
+    }
+  }, [browserCallSid]);
+
+  useEffect(() => {
+    if (callStatus !== "in-call" || !browserCallSid) return;
+    const initial = setTimeout(() => fetchCallStatus(), 0);
+    const interval = setInterval(() => fetchCallStatus(), 4000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
+  }, [callStatus, browserCallSid, fetchCallStatus]);
+
+  // Puts the other party (or, once there's more than one, a specific
+  // participant) on hold. The very first Hold or Add Call on a given call
+  // is what triggers the server's lazy conference upgrade.
+  async function handleToggleHold(participantCallSid: string | undefined, hold: boolean) {
+    playTap();
+    const saved = loadSession();
+    if (!saved || !browserCallSid) return;
+    setCallActionBusy(true);
+    setCallActionError(null);
+    try {
+      const res = await fetch("/api/calls/hold", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...saved, browserCallSid, participantCallSid, hold }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Could not update hold.");
+      await fetchCallStatus();
+    } catch (err) {
+      setCallActionError(err instanceof Error ? err.message : "Could not update hold.");
+    } finally {
+      setCallActionBusy(false);
+    }
+  }
+
+  async function handleAddCallSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    playTap();
+    setCallActionError(null);
+
+    const saved = loadSession();
+    if (!saved || !browserCallSid) return;
+
+    const normalized = normalizePhoneNumber(addCallNumber);
+    if (!isValidE164(normalized)) {
+      setCallActionError("Enter the number in international format, e.g. +12065551234");
+      return;
+    }
+
+    setCallActionBusy(true);
+    try {
+      const res = await fetch("/api/calls/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...saved, browserCallSid, to: normalized }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Could not add the call.");
+      setAddCallOpen(false);
+      setAddCallNumber("");
+      await fetchCallStatus();
+    } catch (err) {
+      setCallActionError(err instanceof Error ? err.message : "Could not add the call.");
+    } finally {
+      setCallActionBusy(false);
+    }
+  }
+
+  // Takes every held participant off hold at once.
+  async function handleMerge() {
+    playTap();
+    const saved = loadSession();
+    if (!saved || !browserCallSid) return;
+    setCallActionBusy(true);
+    setCallActionError(null);
+    try {
+      const res = await fetch("/api/calls/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...saved, browserCallSid }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Could not merge.");
+      await fetchCallStatus();
+    } catch (err) {
+      setCallActionError(err instanceof Error ? err.message : "Could not merge.");
+    } finally {
+      setCallActionBusy(false);
+    }
+  }
 
   // Writes the full contact list back to the server. Used by both add and
   // delete, since the API replaces the whole list rather than patching one
@@ -2165,7 +2336,7 @@ export default function Dialer() {
             </div>
 
             {callStatus === "in-call" && (
-              <div className="mt-7 flex justify-center gap-8">
+              <div className="mt-7 grid grid-cols-2 justify-items-center gap-x-6 gap-y-6">
                 <div className="flex flex-col items-center gap-1.5">
                   <button
                     type="button"
@@ -2193,8 +2364,109 @@ export default function Dialer() {
                   </button>
                   <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Keypad</span>
                 </div>
+
+                {/* A single generic Hold only makes sense while there's at
+                    most one other party - once a call has been added, hold
+                    is per-participant (see the list below) since "hold" is
+                    otherwise ambiguous about who to hold. */}
+                {conferenceParticipants.length <= 1 && (
+                  <div className="flex flex-col items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleHold(conferenceParticipants[0]?.callSid, !conferenceParticipants[0]?.onHold)}
+                      disabled={callActionBusy}
+                      className={
+                        conferenceParticipants[0]?.onHold ? CALL_ACTION_CIRCLE_ACTIVE_CLASS : CALL_ACTION_CIRCLE_CLASS
+                      }
+                      aria-label={conferenceParticipants[0]?.onHold ? "Resume" : "Hold"}
+                    >
+                      <PauseIcon className="h-5 w-5" />
+                    </button>
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                      {conferenceParticipants[0]?.onHold ? "On hold" : "Hold"}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex flex-col items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playTap();
+                      setCallActionError(null);
+                      setAddCallOpen((v) => !v);
+                    }}
+                    className={addCallOpen ? CALL_ACTION_CIRCLE_ACTIVE_CLASS : CALL_ACTION_CIRCLE_CLASS}
+                    aria-label="Add call"
+                  >
+                    <PersonPlusIcon className="h-5 w-5" />
+                  </button>
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Add call</span>
+                </div>
+
+                {conferenceParticipants.some((p) => p.onHold) && (
+                  <div className="flex flex-col items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleMerge}
+                      disabled={callActionBusy}
+                      className={CALL_ACTION_CIRCLE_CLASS}
+                      aria-label="Merge"
+                    >
+                      <MergeIcon className="h-5 w-5" />
+                    </button>
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Merge</span>
+                  </div>
+                )}
               </div>
             )}
+
+            {callStatus === "in-call" && addCallOpen && (
+              <form onSubmit={handleAddCallSubmit} className="mt-4 flex gap-2">
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  autoFocus
+                  value={addCallNumber}
+                  onChange={(e) => setAddCallNumber(e.target.value)}
+                  placeholder="+1 555 123 4567"
+                  className={`flex-1 ${COMPACT_INPUT_CLASS}`}
+                  aria-label="Number to add to this call"
+                />
+                <button type="submit" disabled={callActionBusy} className={MINI_ICON_BUTTON_CLASS} aria-label="Call">
+                  <ArrowRightIcon className="h-3.5 w-3.5" />
+                </button>
+              </form>
+            )}
+
+            {callStatus === "in-call" && inConference && conferenceParticipants.length > 0 && (
+              <div className="mt-4 space-y-1.5">
+                {conferenceParticipants.map((p) => {
+                  const name = contacts.find((c) => c.number === p.number)?.name;
+                  return (
+                    <div
+                      key={p.callSid}
+                      className="flex items-center gap-2 rounded-xl border border-white/50 bg-white/40 px-2.5 py-1.5 dark:border-white/5 dark:bg-white/[0.03]"
+                    >
+                      <Avatar label={name ?? p.number} size="sm" />
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700 dark:text-slate-200">
+                        {name ?? p.number}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleHold(p.callSid, !p.onHold)}
+                        disabled={callActionBusy}
+                        className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500 hover:text-[#C0272D] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400"
+                      >
+                        {p.onHold ? "Resume" : "Hold"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {callActionError && <p className={`mt-3 ${COMPACT_ERROR_CLASS}`}>{callActionError}</p>}
 
             {callStatus === "in-call" && keypadOpen && (
               <div className="mt-5 grid grid-cols-3 gap-x-2 gap-y-3">

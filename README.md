@@ -162,6 +162,17 @@ compliance step, not something this app's code can work around.
   letters under each digit, a live "who is this" contact-match preview as
   you type, and - once connected - a native-style call screen (large
   avatar, circular Mute/Keypad buttons, one big round hang-up button).
+- **Hold, Add Call, and Merge** — once connected, the call screen offers
+  **Hold** (puts the other party on hold with a spoken "please wait"
+  announcement, looping until resumed), **Add call** (dials a second number
+  into the same call without dropping the first), and **Merge** (brings
+  everyone off hold back into one conversation at once). Every normal call
+  still starts exactly as a plain two-party call, identical to how this app
+  has always worked - only the moment Hold or Add Call is actually pressed
+  does it get quietly upgraded into a Twilio Conference behind the scenes
+  (see `lib/conference.ts`), so calls that never use these features are
+  completely unaffected. Requires `PUBLIC_BASE_URL` (already set) for the
+  hold announcement's webhook; no other new env vars.
 - **Call history** — the Calls tab lists every past call (pulled live from
   Twilio's own Call records via `/api/calls`, most recent first) with who
   it was with, incoming/outgoing/missed status, duration, and when. Tap a
@@ -288,6 +299,11 @@ app/
   api/messages/route.ts    Reads/deletes one conversation's message history live from Twilio, scoped to the signed-in user's number
   api/conversations/route.ts  Reads the signed-in user's conversation list, and deletes a whole conversation
   api/calls/route.ts       Reads/deletes the signed-in user's call history live from Twilio's own Call records
+  api/calls/hold/route.ts     Puts the other party (or a specific participant) on hold, or takes them off it
+  api/calls/add/route.ts      Dials a new number into a live call, upgrading it to a conference if needed
+  api/calls/merge/route.ts    Takes every held participant on a call off hold at once
+  api/calls/status/route.ts   Polled by the UI: is this call a conference yet, and who's on it / on hold
+  api/hold-music/route.ts     TwiML webhook: the looping "please wait" announcement played to a held participant
   api/contacts/route.ts    Reads/writes that user's own Phone Book (stored in Twilio Sync, one document per username)
   api/avatar/route.ts      Uploads/removes a profile photo (Vercel Blob for the image, Twilio Sync for the URL)
   api/webauthn/register-options/route.ts   Starts registering a Face ID/Touch ID credential (username+password gated)
@@ -305,6 +321,7 @@ lib/
   contacts.ts              Shared Contact type used by api/contacts and the UI
   messageThread.ts         Shared message-thread/conversation types used by the API routes and the UI
   callLog.ts               Shared CallLogEntry type used by api/calls and the UI
+  conference.ts            The lazy plain-call-to-Twilio-Conference upgrade behind Hold/Add Call/Merge
   profileStore.ts          Reads/writes a profile doc (currently just avatarUrl), one per username
   webauthn.ts              Shared WebAuthn types + Relying Party config (derived from PUBLIC_BASE_URL)
   webauthnStore.ts         Reads/writes registered credentials, one Sync document per username
