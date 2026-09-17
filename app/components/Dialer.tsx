@@ -324,7 +324,7 @@ const SMALL_BUTTON_CLASS =
   "w-full rounded-full bg-gradient-to-b from-slate-800 to-slate-950 py-2 text-xs font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_8px_18px_-8px_rgba(15,23,42,0.5)] transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:from-white dark:to-slate-100 dark:text-slate-900";
 
 const KEYPAD_BUTTON_CLASS =
-  "mx-auto flex h-16 w-16 flex-col items-center justify-center gap-0.5 rounded-full border border-white/60 bg-white/50 font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_10px_-6px_rgba(15,23,42,0.3)] backdrop-blur-sm transition-all duration-150 hover:bg-white/80 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_6px_14px_-6px_rgba(192,39,45,0.25)] active:scale-90 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.15)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_10px_-6px_rgba(0,0,0,0.5)] dark:hover:bg-white/10";
+  "mx-auto flex h-16 w-16 flex-col items-center justify-center gap-0.5 rounded-full border border-white/60 bg-white/50 font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_14px_28px_-10px_rgba(15,23,42,0.4),0_4px_10px_-4px_rgba(15,23,42,0.2)] backdrop-blur-sm transition-all duration-150 hover:bg-white/80 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_18px_32px_-10px_rgba(192,39,45,0.3),0_6px_14px_-4px_rgba(192,39,45,0.2)] active:scale-90 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_14px_28px_-10px_rgba(0,0,0,0.7),0_4px_10px_-4px_rgba(0,0,0,0.5)] dark:hover:bg-white/10";
 
 function KeypadButton({ digit, letters, onClick }: { digit: string; letters: string; onClick: () => void }) {
   return (
@@ -338,16 +338,16 @@ function KeypadButton({ digit, letters, onClick }: { digit: string; letters: str
 }
 
 const CALL_ACTION_CIRCLE_CLASS =
-  "flex h-14 w-14 items-center justify-center rounded-full border border-white/60 bg-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_6px_16px_-8px_rgba(15,23,42,0.25)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-95 dark:border-white/10 dark:bg-white/5 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_6px_16px_-8px_rgba(0,0,0,0.5)] dark:hover:bg-white/10";
+  "flex h-14 w-14 items-center justify-center rounded-full border border-white/60 bg-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_14px_26px_-10px_rgba(15,23,42,0.35),0_4px_10px_-4px_rgba(15,23,42,0.2)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-90 dark:border-white/10 dark:bg-white/5 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_14px_26px_-10px_rgba(0,0,0,0.6),0_4px_10px_-4px_rgba(0,0,0,0.4)] dark:hover:bg-white/10";
 
 const CALL_ACTION_CIRCLE_ACTIVE_CLASS =
-  "flex h-14 w-14 items-center justify-center rounded-full border border-[#C0272D]/30 bg-[#C0272D]/10 text-[#C0272D] shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_6px_16px_-8px_rgba(192,39,45,0.4)] backdrop-blur-sm transition-all active:scale-95 dark:border-[#C0272D]/40 dark:bg-[#C0272D]/15 dark:text-[#ff8087]";
+  "flex h-14 w-14 items-center justify-center rounded-full border border-[#C0272D]/30 bg-[#C0272D]/10 text-[#C0272D] shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_14px_26px_-10px_rgba(192,39,45,0.5),0_4px_10px_-4px_rgba(192,39,45,0.3)] backdrop-blur-sm transition-all active:scale-90 dark:border-[#C0272D]/40 dark:bg-[#C0272D]/15 dark:text-[#ff8087]";
 
 const CALL_BUTTON_CIRCLE_CLASS =
-  "mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_10px_25px_-8px_rgba(16,185,129,0.6)] transition-all hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
+  "mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_20px_36px_-12px_rgba(16,185,129,0.7),0_6px_14px_-4px_rgba(16,185,129,0.4)] transition-all hover:brightness-105 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_24px_40px_-12px_rgba(16,185,129,0.75),0_8px_16px_-4px_rgba(16,185,129,0.45)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
 
 const HANGUP_CIRCLE_CLASS =
-  "mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_10px_25px_-8px_rgba(192,39,45,0.6)] transition-all hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
+  "mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_20px_36px_-12px_rgba(192,39,45,0.7),0_6px_14px_-4px_rgba(192,39,45,0.4)] transition-all hover:brightness-105 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_24px_40px_-12px_rgba(192,39,45,0.75),0_8px_16px_-4px_rgba(192,39,45,0.45)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
 
 const MINI_ICON_BUTTON_CLASS =
   "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/60 bg-white/50 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-90 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10";
@@ -1229,10 +1229,13 @@ export default function Dialer() {
 
   // Appends a digit to the number being typed in the "new call" overlay -
   // distinct from handleKeypadPress, which sends DTMF tones into an
-  // already-connected call instead.
+  // already-connected call instead. Tapping "0" as the very first
+  // character types "+" instead (shown as the hint under 0) - a real
+  // number never starts with a plain 0, so this is what a tap there
+  // actually means in that position, same as a real phone dialer.
   function handleDialPadDigit(digit: string) {
     playTap();
-    setPhoneNumber((p) => p + digit);
+    setPhoneNumber((p) => (digit === "0" && p === "" ? "+" : p + digit));
   }
 
   useEffect(() => {
@@ -1992,9 +1995,10 @@ export default function Dialer() {
   // a close (X) button - the desktop dock can't be dismissed, so it has no
   // "New call" title/close row at all, just the calling-from pill onward.
   function callPanelBody(closable: boolean) {
-    return callStatus === "ready" ? (
+    const ready = callStatus === "ready";
+    return (
       <>
-        {closable && (
+        {closable && ready && (
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold tracking-wide text-slate-900 dark:text-white">New call</h2>
             <button
@@ -2013,12 +2017,15 @@ export default function Dialer() {
           </div>
         )}
         <p
-          className={`${closable ? "mt-1.5" : ""} inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/50 px-2.5 py-1 text-xs font-medium text-slate-500 backdrop-blur-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-400`}
+          className={`${closable && ready ? "mt-1.5" : ""} inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/50 px-2.5 py-1 text-xs font-medium text-slate-500 backdrop-blur-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-400`}
         >
           <span className="h-1.5 w-1.5 rounded-full bg-[#C0272D]" />
           Calling from {callerId || "…"}
         </p>
 
+        {/* Mic/speaker pickers - shown at all times, including mid-call, so
+            switching from the earpiece/speaker to a Bluetooth headset (or
+            back) doesn't require hanging up first. */}
         <div className={`mt-4 grid gap-2 ${outputSelectionSupported ? "grid-cols-2" : "grid-cols-1"}`}>
           <div className="relative">
             <MicIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -2061,116 +2068,118 @@ export default function Dialer() {
           )}
         </div>
 
-        <form onSubmit={handleCall} className="mt-5">
-          <input
-            type="tel"
-            inputMode="tel"
-            value={phoneNumber}
-            onChange={(e) => {
-              setPhoneNumber(e.target.value);
-              setPhoneError(null);
-            }}
-            className={`${INPUT_CLASS} mt-0 text-center text-lg tracking-wide`}
-            placeholder="+1 555 123 4567"
-            aria-label="Phone number"
-          />
-          {phoneError && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{phoneError}</p>}
+        {ready ? (
+          <form onSubmit={handleCall} className="mt-5">
+            <input
+              type="tel"
+              inputMode="tel"
+              value={phoneNumber}
+              onChange={(e) => {
+                setPhoneNumber(e.target.value);
+                setPhoneError(null);
+              }}
+              className={`${INPUT_CLASS} mt-0 text-center text-lg tracking-wide`}
+              placeholder="+1 555 123 4567"
+              aria-label="Phone number"
+            />
+            {phoneError && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{phoneError}</p>}
 
-          {/* Live contact match, echoing a "suggestion" row - shows who
-              this number belongs to before the call is even placed. */}
-          {overlayName && (
-            <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/50 bg-white/40 px-2.5 py-1.5 dark:border-white/5 dark:bg-white/[0.03]">
-              <Avatar label={overlayName} size="sm" />
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{overlayName}</span>
+            {/* Live contact match, echoing a "suggestion" row - shows who
+                this number belongs to before the call is even placed. */}
+            {overlayName && (
+              <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/50 bg-white/40 px-2.5 py-1.5 dark:border-white/5 dark:bg-white/[0.03]">
+                <Avatar label={overlayName} size="sm" />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{overlayName}</span>
+              </div>
+            )}
+
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {KEYPAD_DIGITS.map(({ digit, letters }) => (
+                <KeypadButton key={digit} digit={digit} letters={letters} onClick={() => handleDialPadDigit(digit)} />
+              ))}
             </div>
-          )}
 
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            {KEYPAD_DIGITS.map(({ digit, letters }) => (
-              <KeypadButton key={digit} digit={digit} letters={letters} onClick={() => handleDialPadDigit(digit)} />
-            ))}
-          </div>
+            <button type="submit" disabled={!canCall} className={`mt-6 ${CALL_BUTTON_CIRCLE_CLASS}`} aria-label="Call">
+              <PhoneIcon className="h-6 w-6" />
+            </button>
+          </form>
+        ) : (
+          <>
+            <div className="mt-5 flex flex-col items-center text-center">
+              <Avatar label={overlayName ?? phoneNumber} size="xl" />
+              <h2 className="mt-3 text-lg font-semibold tracking-wide text-slate-900 dark:text-white">
+                {overlayName ?? phoneNumber}
+              </h2>
+              <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    callStatus === "in-call"
+                      ? "bg-emerald-500 shadow-[0_0_8px_2px_rgba(16,185,129,0.6)]"
+                      : "animate-pulse bg-amber-500 shadow-[0_0_8px_2px_rgba(245,158,11,0.5)]"
+                  }`}
+                />
+                {statusLabel}
+              </p>
+            </div>
 
-          <button type="submit" disabled={!canCall} className={`mt-6 ${CALL_BUTTON_CIRCLE_CLASS}`} aria-label="Call">
-            <PhoneIcon className="h-6 w-6" />
-          </button>
-        </form>
+            {callStatus === "in-call" && (
+              <div className="mt-7 flex justify-center gap-8">
+                <div className="flex flex-col items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleToggleMute}
+                    className={muted ? CALL_ACTION_CIRCLE_ACTIVE_CLASS : CALL_ACTION_CIRCLE_CLASS}
+                    aria-label={muted ? "Unmute" : "Mute"}
+                  >
+                    <MicOffIcon className="h-5 w-5" />
+                  </button>
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    {muted ? "Muted" : "Mute"}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playTap();
+                      setKeypadOpen((v) => !v);
+                    }}
+                    className={keypadOpen ? CALL_ACTION_CIRCLE_ACTIVE_CLASS : CALL_ACTION_CIRCLE_CLASS}
+                    aria-label="Keypad"
+                  >
+                    <KeypadIcon className="h-5 w-5" />
+                  </button>
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Keypad</span>
+                </div>
+              </div>
+            )}
 
-        {micPermission === "denied" && (
+            {callStatus === "in-call" && keypadOpen && (
+              <div className="mt-5 grid grid-cols-3 gap-2">
+                {KEYPAD_DIGITS.map(({ digit, letters }) => (
+                  <KeypadButton key={digit} digit={digit} letters={letters} onClick={() => handleKeypadPress(digit)} />
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleHangUp}
+              disabled={!canHangUp}
+              className={`mt-8 ${HANGUP_CIRCLE_CLASS}`}
+              aria-label="Hang up"
+            >
+              <PhoneIcon className="h-6 w-6 rotate-[135deg]" />
+            </button>
+          </>
+        )}
+
+        {ready && micPermission === "denied" && (
           <p className="mt-4 rounded-2xl border border-amber-200/60 bg-amber-50/80 px-3 py-2 text-sm text-amber-800 backdrop-blur-sm dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300">
             Microphone access is blocked. Allow microphone access for this site in your
             browser&apos;s settings, then reload the page.
           </p>
         )}
-
-        {callError && <p className={`mt-4 ${ERROR_BANNER_CLASS}`}>{callError}</p>}
-      </>
-    ) : (
-      <>
-        <div className="flex flex-col items-center text-center">
-          <Avatar label={overlayName ?? phoneNumber} size="xl" />
-          <h2 className="mt-3 text-lg font-semibold tracking-wide text-slate-900 dark:text-white">
-            {overlayName ?? phoneNumber}
-          </h2>
-          <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                callStatus === "in-call"
-                  ? "bg-emerald-500 shadow-[0_0_8px_2px_rgba(16,185,129,0.6)]"
-                  : "animate-pulse bg-amber-500 shadow-[0_0_8px_2px_rgba(245,158,11,0.5)]"
-              }`}
-            />
-            {statusLabel}
-          </p>
-        </div>
-
-        {callStatus === "in-call" && (
-          <div className="mt-7 flex justify-center gap-8">
-            <div className="flex flex-col items-center gap-1.5">
-              <button
-                type="button"
-                onClick={handleToggleMute}
-                className={muted ? CALL_ACTION_CIRCLE_ACTIVE_CLASS : CALL_ACTION_CIRCLE_CLASS}
-                aria-label={muted ? "Unmute" : "Mute"}
-              >
-                <MicOffIcon className="h-5 w-5" />
-              </button>
-              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{muted ? "Muted" : "Mute"}</span>
-            </div>
-            <div className="flex flex-col items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  playTap();
-                  setKeypadOpen((v) => !v);
-                }}
-                className={keypadOpen ? CALL_ACTION_CIRCLE_ACTIVE_CLASS : CALL_ACTION_CIRCLE_CLASS}
-                aria-label="Keypad"
-              >
-                <KeypadIcon className="h-5 w-5" />
-              </button>
-              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Keypad</span>
-            </div>
-          </div>
-        )}
-
-        {callStatus === "in-call" && keypadOpen && (
-          <div className="mt-5 grid grid-cols-3 gap-2">
-            {KEYPAD_DIGITS.map(({ digit, letters }) => (
-              <KeypadButton key={digit} digit={digit} letters={letters} onClick={() => handleKeypadPress(digit)} />
-            ))}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={handleHangUp}
-          disabled={!canHangUp}
-          className={`mt-8 ${HANGUP_CIRCLE_CLASS}`}
-          aria-label="Hang up"
-        >
-          <PhoneIcon className="h-6 w-6 rotate-[135deg]" />
-        </button>
 
         {callError && <p className={`mt-4 ${ERROR_BANNER_CLASS}`}>{callError}</p>}
       </>
@@ -2270,7 +2279,7 @@ export default function Dialer() {
 
       {/* Desktop dial pad - docked permanently on the right rather than
           hidden behind a button, since there's ample spare width there. */}
-      <aside className="hidden lg:flex lg:h-dvh lg:w-[360px] lg:shrink-0 lg:flex-col lg:overflow-y-auto lg:border-l lg:border-white/50 lg:bg-white/60 lg:p-6 lg:backdrop-blur-2xl lg:backdrop-saturate-150 dark:lg:border-white/10 dark:lg:bg-white/[0.04]">
+      <aside className="hidden lg:flex lg:h-dvh lg:w-[360px] lg:shrink-0 lg:flex-col lg:justify-center lg:overflow-y-auto lg:border-l lg:border-white/50 lg:bg-white/60 lg:p-6 lg:backdrop-blur-2xl lg:backdrop-saturate-150 dark:lg:border-white/10 dark:lg:bg-white/[0.04]">
         {callPanelBody(false)}
       </aside>
 
