@@ -13,6 +13,24 @@ const PALETTE = [
   "from-slate-800 to-black", // near-black
 ];
 
+export const PRESET_COUNT = PALETTE.length;
+
+function presetIndex(photoUrl: string | undefined): number | null {
+  const match = photoUrl ? /^preset:(\d+)$/.exec(photoUrl) : null;
+  if (!match) return null;
+  const index = Number(match[1]);
+  return index >= 0 && index < PALETTE.length ? index : null;
+}
+
+function PersonIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z" />
+    </svg>
+  );
+}
+
 function hashSeed(seed: string): number {
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {
@@ -54,6 +72,18 @@ export function Avatar({
   className?: string;
 }) {
   const sizeClass = SIZE_CLASSES[size];
+
+  const preset = presetIndex(photoUrl);
+  if (preset !== null) {
+    return (
+      <span
+        className={`inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-b text-white ring-2 ring-white/70 dark:ring-white/10 ${PALETTE[preset]} ${sizeClass} ${className}`}
+        aria-hidden
+      >
+        <PersonIcon className="h-[58%] w-[58%]" />
+      </span>
+    );
+  }
 
   if (photoUrl) {
     const px = size === "xl" ? 80 : size === "lg" ? 48 : size === "md" ? 36 : 28;

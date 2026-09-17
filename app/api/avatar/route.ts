@@ -20,14 +20,19 @@ const ALLOWED_TYPES: Record<string, string> = {
   "image/webp": "webp",
 };
 
+// BLOB_READ_WRITE_TOKEN is deliberately not required here - it's only
+// needed for the real-photo upload path below. Choosing a preset avatar is
+// just a string written to Twilio Sync, so it works even before Blob
+// storage is set up.
 const REQUIRED_ENV_VARS = [
   "TWILIO_ACCOUNT_SID",
   "TWILIO_API_KEY_SID",
   "TWILIO_API_KEY_SECRET",
   "TWILIO_SYNC_SERVICE_SID",
   "APP_USERS",
-  "BLOB_READ_WRITE_TOKEN",
 ] as const;
+
+const PRESET_COUNT = 5;
 
 function parseDataUrl(dataUrl: string): { mime: string; buffer: Buffer } | null {
   const match = /^data:([a-zA-Z0-9/+.-]+);base64,([a-zA-Z0-9+/=]+)$/.exec(dataUrl);
@@ -51,6 +56,38 @@ export async function POST(req: Request) {
   if (!auth.ok) return auth.response;
   const { user, body: fields } = auth.data;
 
+  const client = getProfileClient();
+
+  // A preset ("generic person" icon in one of the app's brand color
+  // themes) needs no image upload at all - just store the reference.
+  if (typeof fields.preset === "number") {
+    if (!Number.isInteger(fields.preset) || fields.preset < 0 || fields.preset >= PRESET_COUNT) {
+      return NextResponse.json({ error: "Invalid preset." }, { status: 400 });
+    }
+    const avatarUrl = `preset:${fields.preset}`;
+    try {
+      const existing = await readProfile(client, user.username);
+      await writeProfile(client, user.username, { avatarUrl });
+      if (existing.avatarUrl && existing.avatarUrl.startsWith("http")) {
+        del(existing.avatarUrl).catch((err) => {
+          console.warn("[api/avatar] Failed to delete previous photo:", err);
+        });
+      }
+      return NextResponse.json({ avatarUrl });
+    } catch (err) {
+      console.error("[api/avatar] Preset save failed:", err);
+      return NextResponse.json({ error: "Failed to set avatar." }, { status: 502 });
+    }
+  }
+
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    console.error("[api/avatar] Missing required environment variable: BLOB_READ_WRITE_TOKEN");
+    return NextResponse.json(
+      { error: "Server misconfiguration. Please contact the administrator." },
+      { status: 500 },
+    );
+  }
+
   const image = typeof fields.image === "string" ? fields.image : "";
   if (!image) {
     return NextResponse.json({ error: "No image provided." }, { status: 400 });
@@ -64,8 +101,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Image is too large." }, { status: 400 });
   }
 
-  const client = getProfileClient();
-
   try {
     const extension = ALLOWED_TYPES[parsed.mime];
     const blob = await put(`avatars/${user.username}-${Date.now()}.${extension}`, parsed.buffer, {
@@ -78,8 +113,9 @@ export async function POST(req: Request) {
 
     // Best-effort cleanup of the previous photo - failing to delete the old
     // blob leaves an orphaned file in storage but never breaks the app, so
-    // this is deliberately not allowed to fail the upload.
-    if (existing.avatarUrl && existing.avatarUrl !== blob.url) {
+    // this is deliberately not allowed to fail the upload. Skipped if the
+    // previous avatar was a preset ("preset:N"), which has no blob to delete.
+    if (existing.avatarUrl && existing.avatarUrl.startsWith("http") && existing.avatarUrl !== blob.url) {
       del(existing.avatarUrl).catch((err) => {
         console.warn("[api/avatar] Failed to delete previous photo:", err);
       });
@@ -106,7 +142,7 @@ export async function DELETE(req: Request) {
   try {
     const existing = await readProfile(client, user.username);
     await writeProfile(client, user.username, { avatarUrl: undefined });
-    if (existing.avatarUrl) {
+    if (existing.avatarUrl && existing.avatarUrl.startsWith("http")) {
       await del(existing.avatarUrl).catch((err) => {
         console.warn("[api/avatar] Failed to delete photo blob:", err);
       });

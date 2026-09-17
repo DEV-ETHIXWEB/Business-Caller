@@ -154,9 +154,14 @@ compliance step, not something this app's code can work around.
 - **Calls / Texts / Contacts navigation** — a Google Voice-style layout: a
   nav rail on desktop (left side) and a bottom tab bar on mobile switch
   between the three main views, each full-screen with its own search box.
-  Starting a new call is a floating **+** button on the Calls tab, which
-  opens a keypad/number-entry overlay that stays open through the call
-  itself until it's hung up.
+- **Dial pad** — on desktop, it's docked permanently on the right (there's
+  space to spare), always ready with no button to find first. On mobile,
+  a floating **+** button on the Calls tab opens it as an overlay, which
+  stays open through the call itself until it's hung up. Either way it's a
+  real phone-style pad: circular buttons with the standard ABC/DEF/…
+  letters under each digit, a live "who is this" contact-match preview as
+  you type, and - once connected - a native-style call screen (large
+  avatar, circular Mute/Keypad buttons, one big round hang-up button).
 - **Call history** — the Calls tab lists every past call (pulled live from
   Twilio's own Call records via `/api/calls`, most recent first) with who
   it was with, incoming/outgoing/missed status, duration, and when. Tap a
@@ -164,12 +169,14 @@ compliance step, not something this app's code can work around.
   right. Deleting a call permanently removes it from Twilio's records via
   its own delete, same as messages.
 - **Profile photos** — tap your avatar (nav rail on desktop, top-right on
-  mobile) to open your profile: upload a photo (resized/compressed in the
-  browser before it's ever sent, stored in Vercel Blob — see
-  `BLOB_READ_WRITE_TOKEN` below) or remove it. Anyone without a photo gets
-  an automatically colored initials avatar instead, the same way
-  Gmail/Google Voice do — contacts, call history, and message threads all
-  use the same avatars.
+  mobile) to open your profile: upload a real photo (resized/compressed in
+  the browser before it's ever sent, stored in Vercel Blob — see
+  `BLOB_READ_WRITE_TOKEN` below), or pick one of five preset "generic
+  person" avatars, each in a different on-brand color (no Blob storage
+  needed for these - just a small reference saved to Twilio Sync). Anyone
+  who picks neither gets an automatically colored initials avatar instead,
+  the same way Gmail/Google Voice do — contacts, call history, and message
+  threads all use the same avatars.
 - **Stays signed in for 14 days** — unlocking (password or Face ID/Touch
   ID) is remembered in the browser for 14 days, refreshed every time the
   app is opened while still valid. So in practice, opening it at least
