@@ -1933,13 +1933,6 @@ export default function Dialer() {
 
       {/* Desktop nav rail */}
       <nav className={NAV_RAIL_CLASS}>
-        <Image
-          src="/icon-192.png"
-          alt="Ethixweb"
-          width={40}
-          height={40}
-          className="mb-2 h-10 w-10 rounded-2xl shadow-[0_6px_16px_-6px_rgba(15,23,42,0.4)]"
-        />
         <button
           type="button"
           onClick={() => {
