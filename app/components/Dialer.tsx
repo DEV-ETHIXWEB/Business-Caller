@@ -2085,30 +2085,18 @@ export default function Dialer() {
 
         {ready ? (
           <form onSubmit={handleCall} className="mt-5">
-            <div className="relative">
-              <input
-                type="tel"
-                inputMode="tel"
-                value={phoneNumber}
-                onChange={(e) => {
-                  setPhoneNumber(e.target.value);
-                  setPhoneError(null);
-                }}
-                className={`${INPUT_CLASS} mt-0 pr-10 text-center text-lg tracking-wide`}
-                placeholder="+1 555 123 4567"
-                aria-label="Phone number"
-              />
-              {phoneNumber && (
-                <button
-                  type="button"
-                  onClick={handleBackspace}
-                  className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition-all hover:bg-white/60 hover:text-slate-600 active:scale-90 dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-300"
-                  aria-label="Delete last digit"
-                >
-                  <BackspaceIcon className="h-4 w-4" />
-                </button>
-              )}
-            </div>
+            <input
+              type="tel"
+              inputMode="tel"
+              value={phoneNumber}
+              onChange={(e) => {
+                setPhoneNumber(e.target.value);
+                setPhoneError(null);
+              }}
+              className={`${INPUT_CLASS} mt-0 text-center text-lg tracking-wide`}
+              placeholder="+1 555 123 4567"
+              aria-label="Phone number"
+            />
             {phoneError && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{phoneError}</p>}
 
             {/* Live contact match, echoing a "suggestion" row - shows who
@@ -2126,9 +2114,21 @@ export default function Dialer() {
               ))}
             </div>
 
-            <button type="submit" disabled={!canCall} className={`mt-6 ${CALL_BUTTON_CIRCLE_CLASS}`} aria-label="Call">
-              <PhoneIcon className="h-6 w-6" />
-            </button>
+            <div className="mt-6 grid grid-cols-3 items-center">
+              <div />
+              <button type="submit" disabled={!canCall} className={CALL_BUTTON_CIRCLE_CLASS} aria-label="Call">
+                <PhoneIcon className="h-6 w-6" />
+              </button>
+              <button
+                type="button"
+                onClick={handleBackspace}
+                disabled={!phoneNumber}
+                className={`${CALL_ACTION_CIRCLE_CLASS} mx-auto disabled:cursor-not-allowed disabled:opacity-30`}
+                aria-label="Delete last digit"
+              >
+                <BackspaceIcon className="h-5 w-5" />
+              </button>
+            </div>
           </form>
         ) : (
           <>
