@@ -346,6 +346,9 @@ const BOTTOM_BAR_CLASS =
 const FAB_CLASS =
   "fixed bottom-20 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[0_15px_35px_-10px_rgba(192,39,45,0.6)] transition-all hover:brightness-110 active:scale-95 lg:bottom-8 lg:right-8";
 
+const MAIN_PANEL_CLASS =
+  "flex h-full min-h-0 flex-1 flex-col rounded-[1.75rem] border border-white/70 bg-white/70 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_20px_50px_-20px_rgba(192,39,45,0.12),0_12px_28px_-15px_rgba(15,23,42,0.18)] backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-white/[0.04] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_20px_50px_-15px_rgba(192,39,45,0.2),0_15px_45px_-20px_rgba(0,0,0,0.8)]";
+
 const LIST_ROW_CLASS =
   "flex w-full items-center gap-3 rounded-2xl border border-white/50 bg-white/40 px-3 py-2.5 text-left transition-all hover:bg-white/70 active:scale-[0.99] dark:border-white/5 dark:bg-white/[0.03] dark:hover:bg-white/[0.08]";
 
@@ -1995,9 +1998,11 @@ export default function Dialer() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden px-4 pb-4 lg:px-8 lg:py-6">
-          {activeTab === "calls" && callsTabBody}
-          {activeTab === "texts" && textsTabBody}
-          {activeTab === "contacts" && contactsTabBody}
+          <div className={MAIN_PANEL_CLASS}>
+            {activeTab === "calls" && callsTabBody}
+            {activeTab === "texts" && textsTabBody}
+            {activeTab === "contacts" && contactsTabBody}
+          </div>
         </div>
 
         {activeTab === "calls" && (
