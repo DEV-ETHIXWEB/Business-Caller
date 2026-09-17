@@ -236,6 +236,15 @@ function CloseIcon({ className }: { className?: string }) {
   );
 }
 
+function BackspaceIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M9 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6.5-7Z" />
+      <path d="M13 10l4 4M17 10l-4 4" />
+    </svg>
+  );
+}
+
 function PeopleIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -1238,6 +1247,12 @@ export default function Dialer() {
     setPhoneNumber((p) => (digit === "0" && p === "" ? "+" : p + digit));
   }
 
+  function handleBackspace() {
+    playTap();
+    setPhoneNumber((p) => p.slice(0, -1));
+    setPhoneError(null);
+  }
+
   useEffect(() => {
     return () => {
       stopTimer();
@@ -2070,18 +2085,30 @@ export default function Dialer() {
 
         {ready ? (
           <form onSubmit={handleCall} className="mt-5">
-            <input
-              type="tel"
-              inputMode="tel"
-              value={phoneNumber}
-              onChange={(e) => {
-                setPhoneNumber(e.target.value);
-                setPhoneError(null);
-              }}
-              className={`${INPUT_CLASS} mt-0 text-center text-lg tracking-wide`}
-              placeholder="+1 555 123 4567"
-              aria-label="Phone number"
-            />
+            <div className="relative">
+              <input
+                type="tel"
+                inputMode="tel"
+                value={phoneNumber}
+                onChange={(e) => {
+                  setPhoneNumber(e.target.value);
+                  setPhoneError(null);
+                }}
+                className={`${INPUT_CLASS} mt-0 pr-10 text-center text-lg tracking-wide`}
+                placeholder="+1 555 123 4567"
+                aria-label="Phone number"
+              />
+              {phoneNumber && (
+                <button
+                  type="button"
+                  onClick={handleBackspace}
+                  className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition-all hover:bg-white/60 hover:text-slate-600 active:scale-90 dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-300"
+                  aria-label="Delete last digit"
+                >
+                  <BackspaceIcon className="h-4 w-4" />
+                </button>
+              )}
+            </div>
             {phoneError && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{phoneError}</p>}
 
             {/* Live contact match, echoing a "suggestion" row - shows who
