@@ -2003,6 +2003,10 @@ export default function Dialer() {
           </button>
         </div>
 
+        <div className="hidden items-center px-8 pb-1 pt-6 lg:flex">
+          <Image src="/ethixweb-logo.png" alt="Ethixweb" width={160} height={24} className="h-6 w-auto dark:invert" />
+        </div>
+
         <div className="min-h-0 flex-1 overflow-hidden px-4 pb-4 lg:px-8 lg:py-6">
           <div className={MAIN_PANEL_CLASS}>
             {activeTab === "calls" && callsTabBody}
