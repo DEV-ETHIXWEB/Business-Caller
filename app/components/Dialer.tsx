@@ -308,20 +308,20 @@ const PRIMARY_BUTTON_CLASS =
 const SMALL_BUTTON_CLASS =
   "w-full rounded-full bg-gradient-to-b from-slate-800 to-slate-950 py-2 text-xs font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_8px_18px_-8px_rgba(15,23,42,0.5)] transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:from-white dark:to-slate-100 dark:text-slate-900";
 
-const CALL_BUTTON_CLASS =
-  "mt-5 w-full rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 py-3 font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_10px_25px_-8px_rgba(16,185,129,0.6)] transition-all hover:brightness-105 active:scale-[0.98] active:shadow-[inset_0_2px_6px_rgba(0,0,0,0.25)] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 disabled:shadow-none";
-
-const HANGUP_BUTTON_CLASS =
-  "mt-3 w-full rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] py-3 font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_10px_25px_-8px_rgba(192,39,45,0.6)] transition-all hover:brightness-105 active:scale-[0.98] active:shadow-[inset_0_2px_6px_rgba(0,0,0,0.25)] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 disabled:shadow-none";
-
-const ICON_BUTTON_CLASS =
-  "flex flex-1 items-center justify-center gap-1.5 rounded-2xl border border-white/60 bg-white/50 py-2.5 text-xs font-medium text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_6px_16px_-8px_rgba(15,23,42,0.25)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-[0.97] dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_6px_16px_-8px_rgba(0,0,0,0.5)] dark:hover:bg-white/10";
-
-const ICON_BUTTON_ACTIVE_CLASS =
-  "flex flex-1 items-center justify-center gap-1.5 rounded-2xl border border-[#C0272D]/30 bg-[#C0272D]/10 py-2.5 text-xs font-medium text-[#C0272D] shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_6px_16px_-8px_rgba(192,39,45,0.4)] backdrop-blur-sm transition-all active:scale-[0.97] dark:border-[#C0272D]/40 dark:bg-[#C0272D]/15 dark:text-[#ff8087]";
-
 const KEYPAD_BUTTON_CLASS =
-  "flex h-11 items-center justify-center rounded-xl border border-white/60 bg-white/50 text-sm font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_10px_-6px_rgba(15,23,42,0.3)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-95 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.15)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_10px_-6px_rgba(0,0,0,0.5)] dark:hover:bg-white/10";
+  "mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-white/60 bg-white/50 text-base font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_10px_-6px_rgba(15,23,42,0.3)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-95 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.15)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_10px_-6px_rgba(0,0,0,0.5)] dark:hover:bg-white/10";
+
+const CALL_ACTION_CIRCLE_CLASS =
+  "flex h-14 w-14 items-center justify-center rounded-full border border-white/60 bg-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_6px_16px_-8px_rgba(15,23,42,0.25)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-95 dark:border-white/10 dark:bg-white/5 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_6px_16px_-8px_rgba(0,0,0,0.5)] dark:hover:bg-white/10";
+
+const CALL_ACTION_CIRCLE_ACTIVE_CLASS =
+  "flex h-14 w-14 items-center justify-center rounded-full border border-[#C0272D]/30 bg-[#C0272D]/10 text-[#C0272D] shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_6px_16px_-8px_rgba(192,39,45,0.4)] backdrop-blur-sm transition-all active:scale-95 dark:border-[#C0272D]/40 dark:bg-[#C0272D]/15 dark:text-[#ff8087]";
+
+const CALL_BUTTON_CIRCLE_CLASS =
+  "mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_10px_25px_-8px_rgba(16,185,129,0.6)] transition-all hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
+
+const HANGUP_CIRCLE_CLASS =
+  "mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_10px_25px_-8px_rgba(192,39,45,0.6)] transition-all hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
 
 const MINI_ICON_BUTTON_CLASS =
   "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/60 bg-white/50 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-90 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10";
@@ -2058,166 +2058,194 @@ export default function Dialer() {
       {showCallOverlay && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
           <div className={CARD_CLASS}>
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold tracking-wide text-slate-900 dark:text-white">
-                {callStatus === "ready" ? "New call" : overlayName ?? phoneNumber}
-              </h2>
-              {callStatus === "ready" && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    playTap();
-                    setDialOverlayOpen(false);
-                    setCallError(null);
-                    setPhoneError(null);
-                  }}
-                  className={MINI_ICON_BUTTON_CLASS}
-                  aria-label="Close"
-                >
-                  <CloseIcon className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-            <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/50 px-2.5 py-1 text-xs font-medium text-slate-500 backdrop-blur-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#C0272D]" />
-              Calling from {callerId || "…"}
-            </p>
-
-            <div className={`mt-4 grid gap-2 ${outputSelectionSupported ? "grid-cols-2" : "grid-cols-1"}`}>
-              <div className="relative">
-                <MicIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <select
-                  aria-label="Microphone"
-                  value={selectedInputId}
-                  onChange={(e) => handleInputDeviceChange(e.target.value)}
-                  disabled={inputDevices.length === 0}
-                  className={SELECT_CLASS}
-                >
-                  {inputDevices.length === 0 && <option>Default microphone</option>}
-                  {inputDevices.map((d) => (
-                    <option key={d.deviceId} value={d.deviceId}>
-                      {d.label || "Microphone"}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
-              </div>
-
-              {outputSelectionSupported && (
-                <div className="relative">
-                  <SpeakerIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                  <select
-                    aria-label="Speaker"
-                    value={selectedOutputId}
-                    onChange={(e) => handleOutputDeviceChange(e.target.value)}
-                    disabled={outputDevices.length === 0}
-                    className={SELECT_CLASS}
+            {callStatus === "ready" ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold tracking-wide text-slate-900 dark:text-white">New call</h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playTap();
+                      setDialOverlayOpen(false);
+                      setCallError(null);
+                      setPhoneError(null);
+                    }}
+                    className={MINI_ICON_BUTTON_CLASS}
+                    aria-label="Close"
                   >
-                    {outputDevices.length === 0 && <option>Default speaker</option>}
-                    {outputDevices.map((d) => (
-                      <option key={d.deviceId} value={d.deviceId}>
-                        {d.label || "Speaker"}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                    <CloseIcon className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-              )}
-            </div>
+                <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/50 px-2.5 py-1 text-xs font-medium text-slate-500 backdrop-blur-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#C0272D]" />
+                  Calling from {callerId || "…"}
+                </p>
 
-            <form onSubmit={handleCall} className="mt-5">
-              <input
-                type="tel"
-                inputMode="tel"
-                value={phoneNumber}
-                onChange={(e) => {
-                  setPhoneNumber(e.target.value);
-                  setPhoneError(null);
-                }}
-                disabled={callStatus !== "ready"}
-                className={`${INPUT_CLASS} mt-0 text-center text-lg tracking-wide`}
-                placeholder="+1 555 123 4567"
-                aria-label="Phone number"
-              />
-              {phoneError && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{phoneError}</p>}
-
-              {callStatus === "ready" && (
-                <div className="mt-4 grid grid-cols-3 gap-2">
-                  {KEYPAD_DIGITS.map((digit) => (
-                    <button
-                      key={digit}
-                      type="button"
-                      onClick={() => handleDialPadDigit(digit)}
-                      className={KEYPAD_BUTTON_CLASS}
+                <div className={`mt-4 grid gap-2 ${outputSelectionSupported ? "grid-cols-2" : "grid-cols-1"}`}>
+                  <div className="relative">
+                    <MicIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    <select
+                      aria-label="Microphone"
+                      value={selectedInputId}
+                      onChange={(e) => handleInputDeviceChange(e.target.value)}
+                      disabled={inputDevices.length === 0}
+                      className={SELECT_CLASS}
                     >
-                      {digit}
-                    </button>
-                  ))}
+                      {inputDevices.length === 0 && <option>Default microphone</option>}
+                      {inputDevices.map((d) => (
+                        <option key={d.deviceId} value={d.deviceId}>
+                          {d.label || "Microphone"}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                  </div>
+
+                  {outputSelectionSupported && (
+                    <div className="relative">
+                      <SpeakerIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <select
+                        aria-label="Speaker"
+                        value={selectedOutputId}
+                        onChange={(e) => handleOutputDeviceChange(e.target.value)}
+                        disabled={outputDevices.length === 0}
+                        className={SELECT_CLASS}
+                      >
+                        {outputDevices.length === 0 && <option>Default speaker</option>}
+                        {outputDevices.map((d) => (
+                          <option key={d.deviceId} value={d.deviceId}>
+                            {d.label || "Speaker"}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                    </div>
+                  )}
                 </div>
-              )}
 
-              <button type="submit" disabled={!canCall} className={CALL_BUTTON_CLASS}>
-                Call
-              </button>
+                <form onSubmit={handleCall} className="mt-5">
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    value={phoneNumber}
+                    onChange={(e) => {
+                      setPhoneNumber(e.target.value);
+                      setPhoneError(null);
+                    }}
+                    className={`${INPUT_CLASS} mt-0 text-center text-lg tracking-wide`}
+                    placeholder="+1 555 123 4567"
+                    aria-label="Phone number"
+                  />
+                  {phoneError && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{phoneError}</p>}
 
-              <button type="button" onClick={handleHangUp} disabled={!canHangUp} className={HANGUP_BUTTON_CLASS}>
-                Hang Up
-              </button>
-            </form>
+                  {/* Live contact match, echoing a "suggestion" row - shows who
+                      this number belongs to before the call is even placed. */}
+                  {overlayName && (
+                    <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/50 bg-white/40 px-2.5 py-1.5 dark:border-white/5 dark:bg-white/[0.03]">
+                      <Avatar label={overlayName} size="sm" />
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{overlayName}</span>
+                    </div>
+                  )}
 
-            {callStatus === "in-call" && (
-              <div className="mt-4 flex gap-2">
-                <button type="button" onClick={handleToggleMute} className={muted ? ICON_BUTTON_ACTIVE_CLASS : ICON_BUTTON_CLASS}>
-                  <MicOffIcon className="h-4 w-4" />
-                  {muted ? "Muted" : "Mute"}
-                </button>
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    {KEYPAD_DIGITS.map((digit) => (
+                      <button
+                        key={digit}
+                        type="button"
+                        onClick={() => handleDialPadDigit(digit)}
+                        className={KEYPAD_BUTTON_CLASS}
+                      >
+                        {digit}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button type="submit" disabled={!canCall} className={`mt-6 ${CALL_BUTTON_CIRCLE_CLASS}`} aria-label="Call">
+                    <PhoneIcon className="h-6 w-6" />
+                  </button>
+                </form>
+
+                {micPermission === "denied" && (
+                  <p className="mt-4 rounded-2xl border border-amber-200/60 bg-amber-50/80 px-3 py-2 text-sm text-amber-800 backdrop-blur-sm dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300">
+                    Microphone access is blocked. Allow microphone access for this site in your
+                    browser&apos;s settings, then reload the page.
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex flex-col items-center text-center">
+                  <Avatar label={overlayName ?? phoneNumber} size="xl" />
+                  <h2 className="mt-3 text-lg font-semibold tracking-wide text-slate-900 dark:text-white">
+                    {overlayName ?? phoneNumber}
+                  </h2>
+                  <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        callStatus === "in-call"
+                          ? "bg-emerald-500 shadow-[0_0_8px_2px_rgba(16,185,129,0.6)]"
+                          : "animate-pulse bg-amber-500 shadow-[0_0_8px_2px_rgba(245,158,11,0.5)]"
+                      }`}
+                    />
+                    {statusLabel}
+                  </p>
+                </div>
+
+                {callStatus === "in-call" && (
+                  <div className="mt-7 flex justify-center gap-8">
+                    <div className="flex flex-col items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleToggleMute}
+                        className={muted ? CALL_ACTION_CIRCLE_ACTIVE_CLASS : CALL_ACTION_CIRCLE_CLASS}
+                        aria-label={muted ? "Unmute" : "Mute"}
+                      >
+                        <MicOffIcon className="h-5 w-5" />
+                      </button>
+                      <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                        {muted ? "Muted" : "Mute"}
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playTap();
+                          setKeypadOpen((v) => !v);
+                        }}
+                        className={keypadOpen ? CALL_ACTION_CIRCLE_ACTIVE_CLASS : CALL_ACTION_CIRCLE_CLASS}
+                        aria-label="Keypad"
+                      >
+                        <KeypadIcon className="h-5 w-5" />
+                      </button>
+                      <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Keypad</span>
+                    </div>
+                  </div>
+                )}
+
+                {callStatus === "in-call" && keypadOpen && (
+                  <div className="mt-5 grid grid-cols-3 gap-2">
+                    {KEYPAD_DIGITS.map((digit) => (
+                      <button key={digit} type="button" onClick={() => handleKeypadPress(digit)} className={KEYPAD_BUTTON_CLASS}>
+                        {digit}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <button
                   type="button"
-                  onClick={() => {
-                    playTap();
-                    setKeypadOpen((v) => !v);
-                  }}
-                  className={keypadOpen ? ICON_BUTTON_ACTIVE_CLASS : ICON_BUTTON_CLASS}
+                  onClick={handleHangUp}
+                  disabled={!canHangUp}
+                  className={`mt-8 ${HANGUP_CIRCLE_CLASS}`}
+                  aria-label="Hang up"
                 >
-                  <KeypadIcon className="h-4 w-4" />
-                  Keypad
+                  <PhoneIcon className="h-6 w-6 rotate-[135deg]" />
                 </button>
-              </div>
-            )}
-
-            {callStatus === "in-call" && keypadOpen && (
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                {KEYPAD_DIGITS.map((digit) => (
-                  <button key={digit} type="button" onClick={() => handleKeypadPress(digit)} className={KEYPAD_BUTTON_CLASS}>
-                    {digit}
-                  </button>
-                ))}
-              </div>
+              </>
             )}
 
             {callError && <p className={`mt-4 ${ERROR_BANNER_CLASS}`}>{callError}</p>}
-
-            {micPermission === "denied" && (
-              <p className="mt-4 rounded-2xl border border-amber-200/60 bg-amber-50/80 px-3 py-2 text-sm text-amber-800 backdrop-blur-sm dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300">
-                Microphone access is blocked. Allow microphone access for this site in your
-                browser&apos;s settings, then reload the page.
-              </p>
-            )}
-
-            <div className="mt-6 flex items-center justify-center gap-2 border-t border-slate-900/5 pt-4 dark:border-white/5">
-              <span
-                className={`h-2.5 w-2.5 rounded-full transition-all ${
-                  callStatus === "in-call"
-                    ? "bg-emerald-500 shadow-[0_0_10px_3px_rgba(16,185,129,0.6)]"
-                    : micPermission === "denied"
-                      ? "bg-red-500 shadow-[0_0_10px_3px_rgba(239,68,68,0.5)]"
-                      : callStatus === "ready"
-                        ? "bg-slate-300 dark:bg-slate-600"
-                        : "animate-pulse bg-amber-500 shadow-[0_0_10px_3px_rgba(245,158,11,0.5)]"
-                }`}
-              />
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Status: {statusLabel}</p>
-            </div>
           </div>
         </div>
       )}
