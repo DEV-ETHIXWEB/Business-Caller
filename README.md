@@ -1,9 +1,15 @@
 # Business Caller
 
-A simple website where your employee opens a page, types a phone number,
-clicks **Call**, and talks to the client through his laptop's microphone —
-using your Twilio number `+1 (206) 452-3433` as the caller ID. No SIM card
-needed on his end.
+A simple website where your employees each sign in with their own username
+and password, type a phone number, click **Call**, and talk to the client
+through their laptop's microphone — using their own Twilio number as the
+caller ID. No SIM card needed.
+
+This is one shared dialer app serving multiple people. Amar signs in and
+gets `+1 (206) 452-3433` as his caller ID; Prateek signs in (same URL) and
+gets `+1 (872) 278-4999`; Yash signs in and gets `+1 (720) 783-2385`. Each
+person's calls, texts, Phone Book, and Face ID/Touch ID devices are kept
+separate from everyone else's.
 
 This guide assumes you have never used Next.js, Twilio, or Vercel before.
 Follow it top to bottom.
@@ -19,19 +25,23 @@ Follow it top to bottom.
 
 ## How it works, in plain terms
 
-1. Amar opens the website and types an access code (a password only you and
-   he know) to unlock the dialer.
-2. He types a client's phone number and clicks **Call**.
-3. His browser talks to Twilio directly using the Twilio Voice SDK.
+1. Someone opens the website and enters their username and password (set in
+   `APP_USERS`, see below) to unlock the dialer.
+2. They type a client's phone number and click **Call**.
+3. Their browser talks to Twilio directly using the Twilio Voice SDK.
 4. Twilio asks *this app's* server ("`/api/voice`") how to handle the call.
-   The server checks the request is genuinely from Twilio, checks the
-   number is valid, and tells Twilio: "dial this number, show
-   +12064523433 as the caller ID."
-5. Twilio dials the client. Amar talks through his laptop mic/speakers.
+   The server checks the request is genuinely from Twilio, works out which
+   signed-in person is calling, checks the number is valid, and tells
+   Twilio: "dial this number, show *that person's own number* as the caller
+   ID."
+5. Twilio dials the client. The caller talks through their laptop
+   mic/speakers.
 
-Your existing setup — the Twilio number forwarding incoming calls to
-India — is a completely separate configuration and is never touched by
-this app.
+Everyone shares the same TwiML App and Voice Request URL — nothing in
+Twilio Console needs to be configured per person, only the phone number
+itself needs Voice enabled. Your existing setup — the Twilio number
+forwarding incoming calls to India — is a completely separate configuration
+and is never touched by this app.
 
 ## 1. Install and configure for local testing
 
@@ -58,9 +68,9 @@ The full, current list of variables and what each one is for is in
 npm run dev
 ```
 
-Open `http://localhost:3000`. You'll see the lock screen — enter the
-access code from `APP_ACCESS_CODE` in `.env.local`. You can fully test the
-lock screen, the dialer UI, and the microphone prompt this way.
+Open `http://localhost:3000`. You'll see the lock screen — enter one of the
+username/password pairs from `APP_USERS` in `.env.local`. You can fully test
+the lock screen, the dialer UI, and the microphone prompt this way.
 
 **You cannot place a real call from `localhost`** — Twilio needs to reach
 `/api/voice` over the public internet, and your laptop isn't on the public
@@ -112,21 +122,32 @@ Click **Save**.
 
 ## 5. Test a real call
 
-1. Open the deployed URL, enter the access code, allow the microphone
-   prompt.
+1. Open the deployed URL, sign in with a username/password from `APP_USERS`,
+   allow the microphone prompt.
 2. Type a real number you can answer, in international format (e.g.
    `+919876543210` or `+12065551234`), click **Call**.
-3. It should ring, and the caller ID should show `+1 (206) 452-3433`.
+3. It should ring, and the caller ID should show that user's own number
+   (e.g. Amar's calls show `+1 (206) 452-3433`, Prateek's show
+   `+1 (872) 278-4999`).
 4. If it doesn't work, check **Twilio Console → Monitor → Logs → Calls**
    and **Errors** for the specific reason — the most common first-time
    issues are the Request URL not matching `PUBLIC_BASE_URL` exactly, or
    the destination country being blocked under **Voice → Settings → Geo
    Permissions**.
 
-## 6. Give Amar the URL
+## 6. Give each person their login
 
-Send Amar two things: the Vercel URL and the access code. That's all he
-needs — no installs, no SIM card, just a laptop with a mic and a browser.
+Send each person the same Vercel URL plus their own username/password from
+`APP_USERS`. That's all they need — no installs, no SIM card, just a laptop
+with a mic and a browser. Nobody needs to know anyone else's credentials;
+each login only ever sees its own number's calls, texts, and Phone Book.
+
+**Note on SMS for the two new numbers:** `+18722784999` and `+17207832385`
+currently show "Messaging disabled — Complete A2P registration" in Twilio
+Console. Voice/calling works immediately once `APP_USERS` is deployed, but
+sending SMS from those two numbers will fail with a Twilio error until A2P
+10DLC registration is completed for them — that's a Twilio Console/
+compliance step, not something this app's code can work around.
 
 ## Extra features
 
@@ -141,10 +162,11 @@ needs — no installs, no SIM card, just a laptop with a mic and a browser.
   extra setup.
 - **Mute + keypad** — appear once a call connects, for muting and for
   entering digits into an IVR.
-- **Phone Book** — contacts are stored server-side in a Twilio Sync
-  Document (see `TWILIO_SYNC_SERVICE_SID` below), so the same list shows
-  up on every device Amar unlocks the dialer from — add one on a laptop,
-  it's there on the phone too.
+- **Phone Book** — contacts are stored server-side in a per-person Twilio
+  Sync Document (see `TWILIO_SYNC_SERVICE_SID` below), so each person's list
+  shows up on every device they unlock the dialer from — add one on a
+  laptop, it's there on the phone too — without being visible to anyone
+  else signed in with a different login.
 - **Messages/SMS** — an inbox-style list of every past conversation
   (pulled from Twilio's real message history, most recent first), tap one
   to open the full thread with a back button to return to the list, or
@@ -164,11 +186,12 @@ needs — no installs, no SIM card, just a laptop with a mic and a browser.
   Twilio's own delete on the Message resource, so it's a real, permanent
   removal from Twilio's records (not just hidden in this UI) — there's a
   confirmation prompt first since it can't be undone.
-- Sending SMS requires **SMS capability enabled** on `+12064523433` in the
-  Twilio Console (Phone Numbers → your number → check the "SMS"
-  capability is on) — if it's off, sends fail with a clear error. No
-  extra env vars needed; `/api/sms` and `/api/messages` reuse the same
-  credentials as everything else.
+- Sending SMS requires **SMS capability enabled** (and, for a new number,
+  A2P 10DLC registration completed) on that person's own number in the
+  Twilio Console — if it's off or unregistered, sends fail with a clear
+  error. No extra env vars needed; `/api/sms` and `/api/messages` reuse the
+  same credentials as everything else, just scoped to whichever number the
+  signed-in user owns.
 - **App icon** — a custom icon (a phone glyph on the same near-black/crimson
   brand gradient) is wired up for the browser tab, iOS/Android "Add to
   Home Screen," and Chrome's install prompt. Installed from the home
@@ -176,27 +199,29 @@ needs — no installs, no SIM card, just a laptop with a mic and a browser.
   app.
 - **Face ID / Touch ID / Windows Hello** — on a browser and device that
   supports a platform authenticator, the lock screen offers "Unlock with
-  Face ID / Touch ID" as an alternative to typing the access code every
-  time. This is real WebAuthn (passkey) authentication via
+  Face ID / Touch ID" as an alternative to typing the password every time.
+  This is real WebAuthn (passkey) authentication via
   `@simplewebauthn/server` and `@simplewebauthn/browser` — not a password
   autofill shim:
-  - **Setup**: unlock normally with the access code once, then click
+  - **Setup**: sign in normally with username + password once, then click
     **"+ Add this device"** near the bottom of the dialer card. That
     registers a credential tied to this specific browser/device's secure
-    enclave.
-  - **After that**: the lock screen shows the Face ID/Touch ID button
-    first, with the access code as a fallback below it.
+    enclave, for that specific username.
+  - **After that**: enter your username on the lock screen, and the Face
+    ID/Touch ID button appears above the password field as a shortcut.
   - **Under the hood**: registering a new credential still requires the
-    real access code (so a stranger who finds the URL can't register
-    their own face as a backdoor). Signing in with a registered
-    credential does not — the verified biometric signature itself is the
-    proof, and on success the server hands back the real access code,
-    which the app then uses exactly as if it had been typed.
+    real username and password (so a stranger who finds the URL can't
+    register their own face as a backdoor onto someone else's number).
+    Signing in with a registered credential does not — the verified
+    biometric signature itself is the proof, and on success the server
+    hands back that user's real username and password, which the app then
+    uses exactly as if they had been typed.
   - **Managing devices**: the same "Face ID / Touch ID" section lists every
-    registered device with a remove button, in case a device is lost or
-    no longer used.
+    device registered to the signed-in user, with a remove button, in case
+    a device is lost or no longer used.
   - Credentials are stored in the same Twilio Sync Service as the Phone
-    Book (a new document, `webauthn_credentials`) — no new env vars.
+    Book, one document per username (`webauthn_<username>`) — no new env
+    vars, and one person's devices are never visible to another.
 
 ### Heads up: Twilio's default SMS auto-reply
 
@@ -219,9 +244,8 @@ since it's live right now.
 | `TWILIO_API_KEY_SECRET` | Shown once when the API Key was created | **Yes** |
 | `TWILIO_AUTH_TOKEN` | Console → Settings → Account settings → Account details & security | **Yes** |
 | `TWILIO_TWIML_APP_SID` | The "Business Caller" TwiML App you created | No, but keep private |
-| `TWILIO_PHONE_NUMBER` | Fixed: `+12064523433` | No |
-| `TWILIO_SYNC_SERVICE_SID` | A Sync Service (Console → Explore Products → Sync → Services), used to store the shared Phone Book | No, but keep private |
-| `APP_ACCESS_CODE` | A password you choose, shared only with Amar | **Yes** |
+| `TWILIO_SYNC_SERVICE_SID` | A Sync Service (Console → Explore Products → Sync → Services), used to store each person's Phone Book and Face ID/Touch ID credentials | No, but keep private |
+| `APP_USERS` | A JSON array, one entry per person: `[{"username":"amar","password":"...","phoneNumber":"+12064523433","label":"Amar"}, ...]`. Each `phoneNumber` must be a Voice-enabled Twilio number on your account | **Yes** |
 | `PUBLIC_BASE_URL` | Your deployed Vercel URL, no trailing slash | No |
 
 **Never** commit `.env.local` (it already can't be — see `.gitignore`), put
@@ -234,45 +258,48 @@ app/
   page.tsx                 Renders the dialer
   layout.tsx
   components/Dialer.tsx    All dialer/phonebook/messaging UI + Twilio Device logic (client-side)
-  api/token/route.ts       Mints Twilio Access Tokens (server-side, gated by APP_ACCESS_CODE)
-  api/voice/route.ts       TwiML webhook Twilio calls to place the outbound leg
-  api/sms/route.ts         Sends outbound SMS via the Twilio REST API (server-side, same gate)
-  api/messages/route.ts    Reads/deletes one conversation's message history live from Twilio (polled by the UI)
-  api/conversations/route.ts  Reads the list of all conversations, and deletes a whole conversation
-  api/contacts/route.ts    Reads/writes the shared Phone Book (stored in Twilio Sync, not per-browser)
-  api/webauthn/register-options/route.ts   Starts registering a Face ID/Touch ID credential (access-code gated)
-  api/webauthn/register-verify/route.ts    Verifies + stores that credential
-  api/webauthn/login-options/route.ts      Starts a biometric sign-in (no access code needed - this replaces it)
-  api/webauthn/login-verify/route.ts       Verifies the biometric signature, returns the real access code on success
-  api/webauthn/devices/route.ts            Lists/removes registered biometric devices (access-code gated)
+  api/token/route.ts       Mints Twilio Access Tokens for the signed-in user (server-side, gated by APP_USERS)
+  api/voice/route.ts       TwiML webhook Twilio calls to place the outbound leg; resolves caller ID from the caller's identity
+  api/sms/route.ts         Sends outbound SMS via the Twilio REST API, from the signed-in user's own number
+  api/messages/route.ts    Reads/deletes one conversation's message history live from Twilio, scoped to the signed-in user's number
+  api/conversations/route.ts  Reads the signed-in user's conversation list, and deletes a whole conversation
+  api/contacts/route.ts    Reads/writes that user's own Phone Book (stored in Twilio Sync, one document per username)
+  api/webauthn/register-options/route.ts   Starts registering a Face ID/Touch ID credential (username+password gated)
+  api/webauthn/register-verify/route.ts    Verifies + stores that credential under the signed-in username
+  api/webauthn/login-options/route.ts      Starts a biometric sign-in for a given username (no password needed - this replaces it)
+  api/webauthn/login-verify/route.ts       Verifies the biometric signature, returns that user's real username+password on success
+  api/webauthn/devices/route.ts            Lists/removes the signed-in user's registered biometric devices
   icon.png, apple-icon.png    App icons (Next.js file conventions - browser tab, home screen, install prompt)
   manifest.ts              Web app manifest so "Add to Home Screen" opens full-screen with no browser chrome
 lib/
-  auth.ts                  Shared access-code verification (used by every /api route above)
-  constants.ts             Shared agent identity string
+  auth.ts                  Central auth gate: verifies username+password against APP_USERS, used by every /api route above
+  users.ts                 Parses APP_USERS into the user directory (username, password, phoneNumber, identity, label)
   phone.ts                 E.164 validation/normalization, shared client+server
   rateLimit.ts             In-memory best-effort rate limiter
   contacts.ts              Shared Contact type used by api/contacts and the UI
   messageThread.ts         Shared message-thread/conversation types used by the API routes and the UI
   webauthn.ts              Shared WebAuthn types + Relying Party config (derived from PUBLIC_BASE_URL)
-  webauthnStore.ts         Reads/writes registered credentials (Twilio Sync, same service as contacts)
+  webauthnStore.ts         Reads/writes registered credentials, one Sync document per username
 .env.example               Template — copy to .env.local, never commit the real one
 ```
 
 ## Architecture
 
 ```
-Browser (Amar, in the US)
-  -> Twilio Voice JS SDK (@twilio/voice-sdk)
-  -> POST /api/token          (mints a short-lived Twilio Access Token)
+Browser (Amar, Prateek, or Yash - in the US)
+  -> Twilio Voice JS SDK (@twilio/voice-sdk), identity "dialer-<username>"
+  -> POST /api/token          (mints a short-lived Twilio Access Token for that identity)
   -> Twilio Voice edge, using that Access Token
-  -> TwiML App "Voice Request URL"
-  -> POST /api/voice           (verifies the request, returns <Dial>)
+  -> TwiML App "Voice Request URL"        (shared by every user)
+  -> POST /api/voice           (verifies the request, looks up the caller's
+                                 own number from their identity, returns <Dial callerId=...>)
   -> Twilio Voice
   -> destination phone number
 ```
 
 `/api/voice` never trusts the browser: it verifies the `X-Twilio-Signature`
-header on every request (so only Twilio itself can trigger a dial), checks
-the caller's identity matches what this app issues, and re-validates the
-destination number is in E.164 format before generating TwiML.
+header on every request (so only Twilio itself can trigger a dial), maps
+the calling identity (`client:dialer-<username>`) back to that user's own
+phone number via `APP_USERS`, rejects anything that doesn't match a known
+identity, and re-validates the destination number is in E.164 format before
+generating TwiML.

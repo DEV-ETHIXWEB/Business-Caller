@@ -1,21 +1,15 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
-import { getClientIp, rateLimit } from "@/lib/rateLimit";
-import { verifyAccessCode } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
 import type { Contact } from "@/lib/contacts";
 
-// Requires Node's crypto module (via verifyAccessCode / the twilio SDK),
-// so this must run on the Node.js runtime, not Edge.
+// Requires Node's crypto module (via requireUser / the twilio SDK), so
+// this must run on the Node.js runtime, not Edge.
 export const runtime = "nodejs";
 
 const IP_RATE_LIMIT = 60;
 const IP_RATE_WINDOW_MS = 5 * 60 * 1000;
-
-// The whole Phone Book lives in a single Sync Document, since it's a small
-// list (Sync Documents cap at 16 KiB) and there's only ever one device
-// writing at a time in practice.
-const DOCUMENT_NAME = "contacts";
 const MAX_CONTACTS = 500;
 
 const REQUIRED_ENV_VARS = [
@@ -23,7 +17,7 @@ const REQUIRED_ENV_VARS = [
   "TWILIO_API_KEY_SID",
   "TWILIO_API_KEY_SECRET",
   "TWILIO_SYNC_SERVICE_SID",
-  "APP_ACCESS_CODE",
+  "APP_USERS",
 ] as const;
 
 function getClient() {
@@ -32,13 +26,22 @@ function getClient() {
   });
 }
 
+// One Phone Book per person, not one shared list - Prateek and Yash each
+// have their own client list, the way separate phone lines would.
+function documentNameFor(username: string): string {
+  return `contacts_${username}`;
+}
+
 function isNotFound(err: unknown): boolean {
   return typeof err === "object" && err !== null && "status" in err && (err as { status?: number }).status === 404;
 }
 
-async function readContacts(client: ReturnType<typeof twilio>): Promise<Contact[]> {
+async function readContacts(client: ReturnType<typeof twilio>, username: string): Promise<Contact[]> {
   try {
-    const doc = await client.sync.v1.services(process.env.TWILIO_SYNC_SERVICE_SID!).documents(DOCUMENT_NAME).fetch();
+    const doc = await client.sync.v1
+      .services(process.env.TWILIO_SYNC_SERVICE_SID!)
+      .documents(documentNameFor(username))
+      .fetch();
     const data = doc.data as { contacts?: Contact[] } | undefined;
     return Array.isArray(data?.contacts) ? data.contacts : [];
   } catch (err) {
@@ -48,15 +51,16 @@ async function readContacts(client: ReturnType<typeof twilio>): Promise<Contact[
   }
 }
 
-async function writeContacts(client: ReturnType<typeof twilio>, contacts: Contact[]): Promise<void> {
+async function writeContacts(client: ReturnType<typeof twilio>, username: string, contacts: Contact[]): Promise<void> {
   const serviceSid = process.env.TWILIO_SYNC_SERVICE_SID!;
+  const documentName = documentNameFor(username);
   try {
-    await client.sync.v1.services(serviceSid).documents(DOCUMENT_NAME).update({ data: { contacts } });
+    await client.sync.v1.services(serviceSid).documents(documentName).update({ data: { contacts } });
   } catch (err) {
     if (isNotFound(err)) {
       await client.sync.v1
         .services(serviceSid)
-        .documents.create({ uniqueName: DOCUMENT_NAME, data: { contacts } });
+        .documents.create({ uniqueName: documentName, data: { contacts } });
       return;
     }
     throw err;
@@ -88,57 +92,18 @@ function validateContacts(input: unknown): Contact[] | null {
   return result;
 }
 
-async function requireAccessCode(req: Request): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; response: NextResponse }> {
-  for (const key of REQUIRED_ENV_VARS) {
-    if (!process.env[key]) {
-      console.error(`[api/contacts] Missing required environment variable: ${key}`);
-      return {
-        ok: false,
-        response: NextResponse.json(
-          { error: "Server misconfiguration. Please contact the administrator." },
-          { status: 500 },
-        ),
-      };
-    }
-  }
-
-  const ip = getClientIp(req);
-  const limit = rateLimit(`contacts:${ip}`, IP_RATE_LIMIT, IP_RATE_WINDOW_MS);
-  if (!limit.allowed) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Too many requests. Please wait a few minutes and try again." },
-        {
-          status: 429,
-          headers: { "Retry-After": Math.ceil(limit.retryAfterMs / 1000).toString() },
-        },
-      ),
-    };
-  }
-
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return { ok: false, response: NextResponse.json({ error: "Invalid request body." }, { status: 400 }) };
-  }
-
-  const fields = (body ?? {}) as Record<string, unknown>;
-  const accessCode = typeof fields.accessCode === "string" ? fields.accessCode : "";
-  if (!accessCode || !verifyAccessCode(accessCode, process.env.APP_ACCESS_CODE!)) {
-    return { ok: false, response: NextResponse.json({ error: "Invalid access code." }, { status: 401 }) };
-  }
-
-  return { ok: true, body: fields };
-}
-
 export async function POST(req: Request) {
-  const auth = await requireAccessCode(req);
+  const auth = await requireUser(req, {
+    rateLimitKey: "contacts",
+    limit: IP_RATE_LIMIT,
+    windowMs: IP_RATE_WINDOW_MS,
+    requiredEnvVars: REQUIRED_ENV_VARS,
+  });
   if (!auth.ok) return auth.response;
+  const { user } = auth.data;
 
   try {
-    const contacts = await readContacts(getClient());
+    const contacts = await readContacts(getClient(), user.username);
     return NextResponse.json({ contacts });
   } catch (err) {
     console.error("[api/contacts] Twilio fetch failed:", err);
@@ -147,16 +112,22 @@ export async function POST(req: Request) {
 }
 
 export async function PUT(req: Request) {
-  const auth = await requireAccessCode(req);
+  const auth = await requireUser(req, {
+    rateLimitKey: "contacts",
+    limit: IP_RATE_LIMIT,
+    windowMs: IP_RATE_WINDOW_MS,
+    requiredEnvVars: REQUIRED_ENV_VARS,
+  });
   if (!auth.ok) return auth.response;
+  const { user, body: fields } = auth.data;
 
-  const contacts = validateContacts(auth.body.contacts);
+  const contacts = validateContacts(fields.contacts);
   if (!contacts) {
     return NextResponse.json({ error: "Invalid contacts." }, { status: 400 });
   }
 
   try {
-    await writeContacts(getClient(), contacts);
+    await writeContacts(getClient(), user.username, contacts);
     return NextResponse.json({ contacts });
   } catch (err) {
     console.error("[api/contacts] Twilio save failed:", err);

@@ -14,17 +14,11 @@ import type { Contact } from "@/lib/contacts";
 import type { ConversationSummary, ThreadMessage } from "@/lib/messageThread";
 import type { PublicCredentialInfo } from "@/lib/webauthn";
 
-// The number clients will see on their caller ID. This is display-only;
-// the number actually used to place the call is TWILIO_PHONE_NUMBER on the
-// server (app/api/voice/route.ts). Keep these in sync if the number ever
-// changes.
-const DISPLAY_CALLER_ID = "+1 (206) 452-3433";
-
 const MAX_SMS_LENGTH = 1600;
 
 const KEYPAD_DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
-// The access code is remembered for 14 days, refreshed on every successful
+// The credentials are remembered for 14 days, refreshed on every successful
 // login (password or biometric) and every time an already-valid session is
 // found on load - so staying logged in only requires opening the app at
 // least once every 14 days, not 14 days from a single fixed login. Uses
@@ -34,31 +28,39 @@ const SESSION_KEY = "dialer_session";
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 interface StoredSession {
-  code: string;
+  username: string;
+  password: string;
   expiresAt: number;
 }
 
-function saveSession(code: string) {
+interface Credentials {
+  username: string;
+  password: string;
+}
+
+function saveSession(username: string, password: string) {
   try {
-    const session: StoredSession = { code, expiresAt: Date.now() + SESSION_TTL_MS };
+    const session: StoredSession = { username, password, expiresAt: Date.now() + SESSION_TTL_MS };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   } catch {
     // Storage can be unavailable (private browsing, quota) - worst case,
-    // the access code is just asked for again next time.
+    // the credentials are just asked for again next time.
   }
 }
 
-function loadSession(): string | null {
+function loadSession(): Credentials | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const session = JSON.parse(raw) as Partial<StoredSession>;
-    if (typeof session.code !== "string" || typeof session.expiresAt !== "number") return null;
+    if (typeof session.username !== "string" || typeof session.password !== "string" || typeof session.expiresAt !== "number") {
+      return null;
+    }
     if (Date.now() > session.expiresAt) {
       localStorage.removeItem(SESSION_KEY);
       return null;
     }
-    return session.code;
+    return { username: session.username, password: session.password };
   } catch {
     return null;
   }
@@ -84,7 +86,7 @@ function friendlyError(error: DeviceErrorLike): string {
   switch (error.code) {
     case 20101:
     case 20104:
-      return "Your session expired. Please sign out and enter the access code again.";
+      return "Your session expired. Please sign out and sign in again.";
     case 31005:
     case 31009:
       return "Lost connection to Twilio. Check your internet connection and try again.";
@@ -313,20 +315,28 @@ function formatDuration(totalSeconds: number): string {
   return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
-async function requestToken(accessCode: string): Promise<{ token: string }> {
+async function requestToken(
+  username: string,
+  password: string,
+): Promise<{ token: string; phoneNumber: string; label: string }> {
   const res = await fetch("/api/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ accessCode }),
+    body: JSON.stringify({ username, password }),
   });
 
-  const data = (await res.json().catch(() => ({}))) as { token?: string; error?: string };
+  const data = (await res.json().catch(() => ({}))) as {
+    token?: string;
+    phoneNumber?: string;
+    label?: string;
+    error?: string;
+  };
 
-  if (!res.ok || !data.token) {
+  if (!res.ok || !data.token || !data.phoneNumber) {
     throw new Error(data.error || "Unable to unlock the dialer.");
   }
 
-  return { token: data.token };
+  return { token: data.token, phoneNumber: data.phoneNumber, label: data.label ?? "" };
 }
 
 function guessDeviceLabel(): string {
@@ -361,9 +371,14 @@ export default function Dialer() {
   // session on load, so a returning user doesn't see the lock screen
   // flash before being auto-signed-in.
   const [checkingSession, setCheckingSession] = useState(true);
-  const [accessCodeInput, setAccessCodeInput] = useState("");
+  const [usernameInput, setUsernameInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
   const [unlocking, setUnlocking] = useState(false);
   const [lockError, setLockError] = useState<string | null>(null);
+
+  // Populated from /api/token once signed in - this dialer's own number,
+  // shown as the caller ID and used to label the account.
+  const [callerId, setCallerId] = useState("");
 
   // Whether this browser/device has Face ID, Touch ID, or Windows Hello
   // available at all - checked once on mount, used to decide whether to
@@ -549,10 +564,10 @@ export default function Dialer() {
       const device = new TwilioDevice(token);
 
       device.on("tokenWillExpire", async () => {
-        const savedCode = loadSession();
-        if (!savedCode) return;
+        const saved = loadSession();
+        if (!saved) return;
         try {
-          const { token: freshToken } = await requestToken(savedCode);
+          const { token: freshToken } = await requestToken(saved.username, saved.password);
           device.updateToken(freshToken);
         } catch {
           // The token will simply expire; the next call attempt will surface
@@ -585,21 +600,22 @@ export default function Dialer() {
     // so every setState call below - including the early-exit case - never
     // runs synchronously within this effect's own call stack.
     const timer = setTimeout(async () => {
-      const savedCode = loadSession();
-      if (!savedCode) {
+      const saved = loadSession();
+      if (!saved) {
         if (!cancelled) setCheckingSession(false);
         return;
       }
 
       try {
-        const { token } = await requestToken(savedCode);
+        const { token, phoneNumber } = await requestToken(saved.username, saved.password);
         if (cancelled) return;
-        saveSession(savedCode);
+        saveSession(saved.username, saved.password);
+        setCallerId(phoneNumber);
         await setupDevice(token);
         if (!cancelled) setUnlocked(true);
       } catch {
-        // The remembered code no longer works (e.g. APP_ACCESS_CODE was
-        // rotated) - drop it and fall back to the normal lock screen.
+        // The remembered credentials no longer work (e.g. the password was
+        // rotated) - drop them and fall back to the normal lock screen.
         clearSession();
       } finally {
         if (!cancelled) setCheckingSession(false);
@@ -663,14 +679,14 @@ export default function Dialer() {
   // of any webhook, so polling this endpoint - rather than keeping our own
   // local copy - is what makes a client's reply actually show up here.
   const fetchThread = useCallback(async (number: string) => {
-    const code = loadSession();
-    if (!code) return;
+    const saved = loadSession();
+    if (!saved) return;
     setMessagesLoading(true);
     try {
       const res = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessCode: code, with: number }),
+        body: JSON.stringify({ ...saved, with: number }),
       });
       const data = (await res.json().catch(() => ({}))) as { messages?: ThreadMessage[] };
       if (res.ok && data.messages) {
@@ -703,14 +719,14 @@ export default function Dialer() {
   // it's just an index of who you've talked to, not something that needs
   // second-by-second freshness the way an open thread does.
   const fetchConversations = useCallback(async () => {
-    const code = loadSession();
-    if (!code) return;
+    const saved = loadSession();
+    if (!saved) return;
     setConversationsLoading(true);
     try {
       const res = await fetch("/api/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessCode: code }),
+        body: JSON.stringify(saved),
       });
       const data = (await res.json().catch(() => ({}))) as { conversations?: ConversationSummary[] };
       if (res.ok && data.conversations) {
@@ -733,14 +749,14 @@ export default function Dialer() {
   // fetched once on unlock, then re-fetched after every add/delete so this
   // browser's list stays in sync with whatever it just wrote.
   const fetchContacts = useCallback(async () => {
-    const code = loadSession();
-    if (!code) return;
+    const saved = loadSession();
+    if (!saved) return;
     setContactsLoading(true);
     try {
       const res = await fetch("/api/contacts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessCode: code }),
+        body: JSON.stringify(saved),
       });
       const data = (await res.json().catch(() => ({}))) as { contacts?: Contact[] };
       if (res.ok && data.contacts) {
@@ -763,13 +779,13 @@ export default function Dialer() {
   // delete, since the API replaces the whole list rather than patching one
   // entry at a time.
   async function saveContactsToServer(next: Contact[]): Promise<boolean> {
-    const code = loadSession();
-    if (!code) return false;
+    const saved = loadSession();
+    if (!saved) return false;
     try {
       const res = await fetch("/api/contacts", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessCode: code, contacts: next }),
+        body: JSON.stringify({ ...saved, contacts: next }),
       });
       if (!res.ok) return false;
       const data = (await res.json().catch(() => ({}))) as { contacts?: Contact[] };
@@ -781,13 +797,13 @@ export default function Dialer() {
   }
 
   const fetchDevices = useCallback(async () => {
-    const code = loadSession();
-    if (!code) return;
+    const saved = loadSession();
+    if (!saved) return;
     try {
       const res = await fetch("/api/webauthn/devices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessCode: code }),
+        body: JSON.stringify(saved),
       });
       const data = (await res.json().catch(() => ({}))) as { devices?: PublicCredentialInfo[] };
       if (res.ok && data.devices) setDevices(data.devices);
@@ -809,10 +825,19 @@ export default function Dialer() {
   // just "I'll type the password instead."
   async function handleBiometricUnlock() {
     playTap();
+    const username = usernameInput.trim();
+    if (!username) {
+      setLockError("Enter your username first.");
+      return;
+    }
     setBiometricBusy(true);
     setLockError(null);
     try {
-      const optsRes = await fetch("/api/webauthn/login-options", { method: "POST" });
+      const optsRes = await fetch("/api/webauthn/login-options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username }),
+      });
       const optsData = (await optsRes.json().catch(() => ({}))) as {
         options?: Parameters<typeof startAuthentication>[0]["optionsJSON"];
       };
@@ -823,13 +848,14 @@ export default function Dialer() {
       const verifyRes = await fetch("/api/webauthn/login-verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ response: assertion, expectedChallenge: optsData.options.challenge }),
+        body: JSON.stringify({ username, response: assertion, expectedChallenge: optsData.options.challenge }),
       });
-      const verifyData = (await verifyRes.json().catch(() => ({}))) as { accessCode?: string };
-      if (!verifyRes.ok || !verifyData.accessCode) throw new Error("Could not verify.");
+      const verifyData = (await verifyRes.json().catch(() => ({}))) as { username?: string; password?: string };
+      if (!verifyRes.ok || !verifyData.username || !verifyData.password) throw new Error("Could not verify.");
 
-      const { token } = await requestToken(verifyData.accessCode);
-      saveSession(verifyData.accessCode);
+      const { token, phoneNumber } = await requestToken(verifyData.username, verifyData.password);
+      saveSession(verifyData.username, verifyData.password);
+      setCallerId(phoneNumber);
       await setupDevice(token);
       setUnlocked(true);
     } catch (err) {
@@ -847,8 +873,8 @@ export default function Dialer() {
     setRegisteringDevice(true);
     setDeviceSetupMessage(null);
 
-    const accessCode = loadSession();
-    if (!accessCode) {
+    const saved = loadSession();
+    if (!saved) {
       setRegisteringDevice(false);
       return;
     }
@@ -857,7 +883,7 @@ export default function Dialer() {
       const optsRes = await fetch("/api/webauthn/register-options", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessCode }),
+        body: JSON.stringify(saved),
       });
       const optsData = (await optsRes.json().catch(() => ({}))) as {
         options?: Parameters<typeof startRegistration>[0]["optionsJSON"];
@@ -871,7 +897,7 @@ export default function Dialer() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          accessCode,
+          ...saved,
           response: attestation,
           expectedChallenge: optsData.options.challenge,
           deviceLabel: guessDeviceLabel(),
@@ -896,13 +922,13 @@ export default function Dialer() {
   async function handleRemoveDevice(id: string, label: string) {
     if (!window.confirm(`Remove Face ID / Touch ID access for "${label}"?`)) return;
     playTap();
-    const accessCode = loadSession();
-    if (!accessCode) return;
+    const saved = loadSession();
+    if (!saved) return;
     try {
       const res = await fetch("/api/webauthn/devices", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessCode, id }),
+        body: JSON.stringify({ ...saved, id }),
       });
       const data = (await res.json().catch(() => ({}))) as { devices?: PublicCredentialInfo[] };
       if (res.ok && data.devices) setDevices(data.devices);
@@ -925,8 +951,10 @@ export default function Dialer() {
     setLockError(null);
     setUnlocking(true);
     try {
-      const { token } = await requestToken(accessCodeInput);
-      saveSession(accessCodeInput);
+      const username = usernameInput.trim();
+      const { token, phoneNumber } = await requestToken(username, passwordInput);
+      saveSession(username, passwordInput);
+      setCallerId(phoneNumber);
       await setupDevice(token);
       setUnlocked(true);
     } catch (err) {
@@ -943,7 +971,9 @@ export default function Dialer() {
     clearSession();
     setUnlocked(false);
     setDeviceReady(false);
-    setAccessCodeInput("");
+    setUsernameInput("");
+    setPasswordInput("");
+    setCallerId("");
     setPhoneNumber("");
     setInputDevices([]);
     setOutputDevices([]);
@@ -1094,9 +1124,9 @@ export default function Dialer() {
       return;
     }
 
-    const accessCode = loadSession();
-    if (!accessCode) {
-      setSmsError("Your session expired. Please sign out and enter the access code again.");
+    const saved = loadSession();
+    if (!saved) {
+      setSmsError("Your session expired. Please sign out and sign in again.");
       return;
     }
 
@@ -1105,7 +1135,7 @@ export default function Dialer() {
       const res = await fetch("/api/sms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessCode, to: activeThread, message: body }),
+        body: JSON.stringify({ ...saved, to: activeThread, message: body }),
       });
       const data = (await res.json().catch(() => ({}))) as { sid?: string; status?: string; error?: string };
       if (!res.ok || !data.sid) {
@@ -1131,13 +1161,13 @@ export default function Dialer() {
       return;
     }
     playTap();
-    const accessCode = loadSession();
-    if (!accessCode) return;
+    const saved = loadSession();
+    if (!saved) return;
     try {
       await fetch("/api/messages", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessCode, sid }),
+        body: JSON.stringify({ ...saved, sid }),
       });
     } catch {
       // Best-effort; the refresh below shows whatever Twilio actually has.
@@ -1155,13 +1185,13 @@ export default function Dialer() {
       return;
     }
     playTap();
-    const accessCode = loadSession();
-    if (!accessCode) return;
+    const saved = loadSession();
+    if (!saved) return;
     try {
       await fetch("/api/conversations", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessCode, with: number }),
+        body: JSON.stringify({ ...saved, with: number }),
       });
     } catch {
       // Best-effort; the refresh below shows whatever Twilio actually has.
@@ -1451,37 +1481,54 @@ export default function Dialer() {
             BUSINESS <span className="text-[#C0272D]">CALLER</span>
           </h1>
           <p className="mt-1 text-center text-sm text-slate-500 dark:text-slate-400">
-            Enter your access code to continue
+            Sign in to continue
           </p>
+
+          <label htmlFor="username" className="mt-6 block text-sm font-medium text-slate-700 dark:text-slate-300">
+            Username
+          </label>
+          <input
+            id="username"
+            type="text"
+            autoComplete="username"
+            value={usernameInput}
+            onChange={(e) => {
+              setUsernameInput(e.target.value);
+              setLockError(null);
+            }}
+            className={INPUT_CLASS}
+            placeholder="e.g. amar"
+            required
+          />
 
           {biometricSupported && (
             <>
               <button
                 type="button"
                 onClick={handleBiometricUnlock}
-                disabled={biometricBusy}
-                className={`${PRIMARY_BUTTON_CLASS} flex items-center justify-center gap-2`}
+                disabled={biometricBusy || !usernameInput.trim()}
+                className={`${PRIMARY_BUTTON_CLASS} mt-4 flex items-center justify-center gap-2`}
               >
                 <FingerprintIcon className="h-4 w-4" />
                 {biometricBusy ? "Verifying…" : "Unlock with Face ID / Touch ID"}
               </button>
               <div className="my-4 flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500">
                 <div className="h-px flex-1 bg-slate-900/10 dark:bg-white/10" />
-                or enter your access code
+                or enter your password
                 <div className="h-px flex-1 bg-slate-900/10 dark:bg-white/10" />
               </div>
             </>
           )}
 
-          <label htmlFor="accessCode" className="mt-6 block text-sm font-medium text-slate-700 dark:text-slate-300">
-            Access Code
+          <label htmlFor="password" className={biometricSupported ? "block text-sm font-medium text-slate-700 dark:text-slate-300" : "mt-4 block text-sm font-medium text-slate-700 dark:text-slate-300"}>
+            Password
           </label>
           <input
-            id="accessCode"
+            id="password"
             type="password"
-            autoComplete="off"
-            value={accessCodeInput}
-            onChange={(e) => setAccessCodeInput(e.target.value)}
+            autoComplete="current-password"
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
             className={INPUT_CLASS}
             placeholder="••••••••"
             required
@@ -1582,7 +1629,7 @@ export default function Dialer() {
           </div>
           <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/50 px-2.5 py-1 text-xs font-medium text-slate-500 backdrop-blur-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-400">
             <span className="h-1.5 w-1.5 rounded-full bg-[#C0272D]" />
-            Calling from {DISPLAY_CALLER_ID}
+            Calling from {callerId || "…"}
           </p>
 
           <div className={`mt-4 grid gap-2 ${outputSelectionSupported ? "grid-cols-2" : "grid-cols-1"}`}>

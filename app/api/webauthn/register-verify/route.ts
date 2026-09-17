@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
 import { verifyRegistrationResponse, type RegistrationResponseJSON } from "@simplewebauthn/server";
-import { getClientIp, rateLimit } from "@/lib/rateLimit";
-import { verifyAccessCode } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { getRpID, getExpectedOrigin, toPublicCredentialInfo, type StoredCredential } from "@/lib/webauthn";
 import { getWebAuthnClient, readCredentials, writeCredentials } from "@/lib/webauthnStore";
 
 export const runtime = "nodejs";
 
-const IP_RATE_LIMIT = 20;
-const IP_RATE_WINDOW_MS = 5 * 60 * 1000;
 const MAX_LABEL_LENGTH = 60;
 
 const REQUIRED_ENV_VARS = [
@@ -16,45 +13,19 @@ const REQUIRED_ENV_VARS = [
   "TWILIO_API_KEY_SID",
   "TWILIO_API_KEY_SECRET",
   "TWILIO_SYNC_SERVICE_SID",
-  "APP_ACCESS_CODE",
+  "APP_USERS",
   "PUBLIC_BASE_URL",
 ] as const;
 
 export async function POST(req: Request) {
-  for (const key of REQUIRED_ENV_VARS) {
-    if (!process.env[key]) {
-      console.error(`[api/webauthn/register-verify] Missing required environment variable: ${key}`);
-      return NextResponse.json(
-        { error: "Server misconfiguration. Please contact the administrator." },
-        { status: 500 },
-      );
-    }
-  }
-
-  const ip = getClientIp(req);
-  const limit = rateLimit(`webauthn-reg-verify:${ip}`, IP_RATE_LIMIT, IP_RATE_WINDOW_MS);
-  if (!limit.allowed) {
-    return NextResponse.json(
-      { error: "Too many requests. Please wait a few minutes and try again." },
-      {
-        status: 429,
-        headers: { "Retry-After": Math.ceil(limit.retryAfterMs / 1000).toString() },
-      },
-    );
-  }
-
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
-  }
-
-  const fields = (body ?? {}) as Record<string, unknown>;
-  const accessCode = typeof fields.accessCode === "string" ? fields.accessCode : "";
-  if (!accessCode || !verifyAccessCode(accessCode, process.env.APP_ACCESS_CODE!)) {
-    return NextResponse.json({ error: "Invalid access code." }, { status: 401 });
-  }
+  const auth = await requireUser(req, {
+    rateLimitKey: "webauthn-reg-verify",
+    limit: 20,
+    windowMs: 5 * 60 * 1000,
+    requiredEnvVars: REQUIRED_ENV_VARS,
+  });
+  if (!auth.ok) return auth.response;
+  const { user, body: fields } = auth.data;
 
   const response = fields.response as RegistrationResponseJSON | undefined;
   const expectedChallenge = typeof fields.expectedChallenge === "string" ? fields.expectedChallenge : "";
@@ -104,9 +75,9 @@ export async function POST(req: Request) {
   };
 
   const client = getWebAuthnClient();
-  const existing = await readCredentials(client);
+  const existing = await readCredentials(client, user.username);
   const next = [...existing.filter((c) => c.id !== stored.id), stored];
-  await writeCredentials(client, next);
+  await writeCredentials(client, user.username, next);
 
   return NextResponse.json({ verified: true, devices: next.map(toPublicCredentialInfo) });
 }

@@ -2,14 +2,11 @@ import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
 import { getClientIp, rateLimit } from "@/lib/rateLimit";
-import { AGENT_IDENTITY } from "@/lib/constants";
+import { findUserByIdentity } from "@/lib/users";
 
 // Requires Node's crypto module (via the twilio SDK's request validation),
 // so this must run on the Node.js runtime, not Edge.
 export const runtime = "nodejs";
-
-// Twilio reports browser-SDK callers as "client:<identity>" in From.
-const EXPECTED_FROM = `client:${AGENT_IDENTITY}`;
 
 // Hard ceiling on a single call's length, in case of a stuck/forgotten call.
 const MAX_CALL_SECONDS = 4 * 60 * 60; // 4 hours
@@ -22,7 +19,7 @@ const RING_TIMEOUT_SECONDS = 30;
 const IP_RATE_LIMIT = 30;
 const IP_RATE_WINDOW_MS = 5 * 60 * 1000;
 
-const REQUIRED_ENV_VARS = ["TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER", "PUBLIC_BASE_URL"] as const;
+const REQUIRED_ENV_VARS = ["TWILIO_AUTH_TOKEN", "PUBLIC_BASE_URL", "APP_USERS"] as const;
 
 function xmlResponse(body: string, status = 200) {
   return new NextResponse(body, {
@@ -73,9 +70,13 @@ export async function POST(req: Request) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 
-  // Belt-and-suspenders: only the identity our own token endpoint issues
-  // is allowed to place a call through this app.
-  if (params.From !== EXPECTED_FROM) {
+  // One shared TwiML App serves every user - the caller ID isn't fixed, it's
+  // resolved from whichever identity placed the call (Twilio reports it as
+  // "client:<identity>"), so each person's outbound calls show their own
+  // number without needing a separate TwiML App per person.
+  const identity = params.From?.startsWith("client:") ? params.From.slice("client:".length) : "";
+  const user = identity ? findUserByIdentity(identity) : undefined;
+  if (!user) {
     console.warn(`[api/voice] Rejected request from unexpected identity: ${params.From}`);
     return sayAndHangup("Unauthorized caller.", 403);
   }
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
 
   const vr = new twilio.twiml.VoiceResponse();
   const dial = vr.dial({
-    callerId: process.env.TWILIO_PHONE_NUMBER,
+    callerId: user.phoneNumber,
     timeout: RING_TIMEOUT_SECONDS,
     timeLimit: MAX_CALL_SECONDS,
   });

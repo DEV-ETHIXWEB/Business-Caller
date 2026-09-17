@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
-import { getClientIp, rateLimit } from "@/lib/rateLimit";
+import { requireUser } from "@/lib/auth";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
-import { verifyAccessCode } from "@/lib/auth";
 import type { ThreadMessage } from "@/lib/messageThread";
 
-// Requires Node's crypto module (via verifyAccessCode / the twilio SDK),
-// so this must run on the Node.js runtime, not Edge.
+// Requires Node's crypto module (via requireUser / the twilio SDK), so
+// this must run on the Node.js runtime, not Edge.
 export const runtime = "nodejs";
 
 // This endpoint is polled every few seconds while a conversation is open in
@@ -17,51 +16,19 @@ const IP_RATE_LIMIT = 90;
 const IP_RATE_WINDOW_MS = 5 * 60 * 1000;
 const THREAD_PAGE_SIZE = 50;
 
-const REQUIRED_ENV_VARS = [
-  "TWILIO_ACCOUNT_SID",
-  "TWILIO_API_KEY_SID",
-  "TWILIO_API_KEY_SECRET",
-  "TWILIO_PHONE_NUMBER",
-  "APP_ACCESS_CODE",
-] as const;
+const REQUIRED_ENV_VARS = ["TWILIO_ACCOUNT_SID", "TWILIO_API_KEY_SID", "TWILIO_API_KEY_SECRET", "APP_USERS"] as const;
 
 const MESSAGE_SID_PATTERN = /^SM[0-9a-fA-F]{32}$/;
 
 export async function POST(req: Request) {
-  for (const key of REQUIRED_ENV_VARS) {
-    if (!process.env[key]) {
-      console.error(`[api/messages] Missing required environment variable: ${key}`);
-      return NextResponse.json(
-        { error: "Server misconfiguration. Please contact the administrator." },
-        { status: 500 },
-      );
-    }
-  }
-
-  const ip = getClientIp(req);
-  const limit = rateLimit(`messages:${ip}`, IP_RATE_LIMIT, IP_RATE_WINDOW_MS);
-  if (!limit.allowed) {
-    return NextResponse.json(
-      { error: "Too many requests. Please wait a few minutes and try again." },
-      {
-        status: 429,
-        headers: { "Retry-After": Math.ceil(limit.retryAfterMs / 1000).toString() },
-      },
-    );
-  }
-
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
-  }
-
-  const fields = (body ?? {}) as Record<string, unknown>;
-  const accessCode = typeof fields.accessCode === "string" ? fields.accessCode : "";
-  if (!accessCode || !verifyAccessCode(accessCode, process.env.APP_ACCESS_CODE!)) {
-    return NextResponse.json({ error: "Invalid access code." }, { status: 401 });
-  }
+  const auth = await requireUser(req, {
+    rateLimitKey: "messages",
+    limit: IP_RATE_LIMIT,
+    windowMs: IP_RATE_WINDOW_MS,
+    requiredEnvVars: REQUIRED_ENV_VARS,
+  });
+  if (!auth.ok) return auth.response;
+  const { user, body: fields } = auth.data;
 
   const withNumber = normalizePhoneNumber(typeof fields.with === "string" ? fields.with : "");
   if (!isValidE164(withNumber)) {
@@ -72,7 +39,7 @@ export async function POST(req: Request) {
     accountSid: process.env.TWILIO_ACCOUNT_SID!,
   });
 
-  const ourNumber = process.env.TWILIO_PHONE_NUMBER!;
+  const ourNumber = user.phoneNumber;
 
   try {
     // Twilio records every inbound and outbound message against the account
@@ -107,40 +74,14 @@ export async function POST(req: Request) {
 // resource - the message is permanently removed from Twilio's records, not
 // just hidden in this UI. There is nothing to undo this with.
 export async function DELETE(req: Request) {
-  for (const key of REQUIRED_ENV_VARS) {
-    if (!process.env[key]) {
-      console.error(`[api/messages] Missing required environment variable: ${key}`);
-      return NextResponse.json(
-        { error: "Server misconfiguration. Please contact the administrator." },
-        { status: 500 },
-      );
-    }
-  }
-
-  const ip = getClientIp(req);
-  const limit = rateLimit(`messages-delete:${ip}`, 30, IP_RATE_WINDOW_MS);
-  if (!limit.allowed) {
-    return NextResponse.json(
-      { error: "Too many requests. Please wait a few minutes and try again." },
-      {
-        status: 429,
-        headers: { "Retry-After": Math.ceil(limit.retryAfterMs / 1000).toString() },
-      },
-    );
-  }
-
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
-  }
-
-  const fields = (body ?? {}) as Record<string, unknown>;
-  const accessCode = typeof fields.accessCode === "string" ? fields.accessCode : "";
-  if (!accessCode || !verifyAccessCode(accessCode, process.env.APP_ACCESS_CODE!)) {
-    return NextResponse.json({ error: "Invalid access code." }, { status: 401 });
-  }
+  const auth = await requireUser(req, {
+    rateLimitKey: "messages-delete",
+    limit: 30,
+    windowMs: IP_RATE_WINDOW_MS,
+    requiredEnvVars: REQUIRED_ENV_VARS,
+  });
+  if (!auth.ok) return auth.response;
+  const { user, body: fields } = auth.data;
 
   const sid = typeof fields.sid === "string" ? fields.sid : "";
   if (!MESSAGE_SID_PATTERN.test(sid)) {
@@ -152,9 +93,14 @@ export async function DELETE(req: Request) {
   });
 
   try {
-    // client.messages(sid).remove() is scoped to our own authenticated
-    // Twilio account, so this can only ever delete a message that already
-    // belongs to it - Twilio 404s for any SID it doesn't own.
+    // All users share one Twilio account, so a message SID alone doesn't
+    // prove it belongs to this user's own number - fetch it first and
+    // confirm before deleting, so one person can't delete another
+    // person's messages even if they somehow had the SID.
+    const message = await client.messages(sid).fetch();
+    if (message.to !== user.phoneNumber && message.from !== user.phoneNumber) {
+      return NextResponse.json({ error: "Message not found." }, { status: 404 });
+    }
     await client.messages(sid).remove();
     return NextResponse.json({ deleted: true });
   } catch (err) {
