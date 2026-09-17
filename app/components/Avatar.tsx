@@ -1,17 +1,16 @@
 import Image from "next/image";
 
-// A small, curated set of gradients (not a full rainbow) so avatars stay
-// consistent with the app's brand palette instead of looking like a random
-// contacts-app rainbow. Picked deterministically per name/number below, the
-// same way Gmail/Google Voice color initial avatars.
+// Kept strictly within the app's red/black/white/cream palette - no
+// off-brand hues - while still varying enough (crimson, maroon, charcoal,
+// near-black) that different people are easy to tell apart at a glance.
+// Picked deterministically per name/number below, the same way
+// Gmail/Google Voice color initial avatars.
 const PALETTE = [
   "from-[#e0555c] to-[#C0272D]", // brand crimson
-  "from-amber-400 to-orange-500",
-  "from-emerald-400 to-teal-600",
-  "from-sky-400 to-blue-600",
-  "from-violet-400 to-purple-600",
-  "from-fuchsia-400 to-pink-600",
-  "from-slate-500 to-slate-700",
+  "from-[#C0272D] to-[#7a1620]", // deep crimson / maroon
+  "from-[#b0413a] to-[#5c1b1b]", // muted brick red
+  "from-slate-600 to-slate-900", // charcoal
+  "from-slate-800 to-black", // near-black
 ];
 
 function hashSeed(seed: string): number {
