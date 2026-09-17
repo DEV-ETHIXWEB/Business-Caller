@@ -13,6 +13,17 @@ const PALETTE = [
   "from-slate-800 to-black", // near-black
 ];
 
+// A colored glow to match each palette entry, used only on the preset
+// avatars (see below) - initials avatars stay flat/cheap since they can
+// appear dozens of times in a list.
+const GLOW = [
+  "shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_22px_-4px_rgba(224,85,92,0.9)]",
+  "shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_22px_-4px_rgba(192,39,45,0.9)]",
+  "shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_22px_-4px_rgba(176,65,58,0.9)]",
+  "shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_22px_-4px_rgba(100,116,139,0.8)]",
+  "shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_22px_-4px_rgba(192,39,45,0.55)]",
+];
+
 export const PRESET_COUNT = PALETTE.length;
 
 function presetIndex(photoUrl: string | undefined): number | null {
@@ -22,11 +33,24 @@ function presetIndex(photoUrl: string | undefined): number | null {
   return index >= 0 && index < PALETTE.length ? index : null;
 }
 
-function PersonIcon({ className }: { className?: string }) {
+// A low-poly, faceted take on a person glyph for the preset avatars - each
+// triangle/quad is the same shape lit from the top-left at a different
+// opacity, the way a cut gemstone reads as one form built from many facets.
+// Purely geometric (no photography, no per-preset asset files), so it
+// stays crisp and on-brand at any size.
+function FacetedPersonIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z" />
+    <svg viewBox="0 0 24 24" className={className}>
+      <g fill="currentColor">
+        <polygon points="12,8 12,3.7 15.72,5.85" opacity="0.95" />
+        <polygon points="12,8 15.72,5.85 15.72,10.15" opacity="0.55" />
+        <polygon points="12,8 15.72,10.15 12,12.3" opacity="0.3" />
+        <polygon points="12,8 12,12.3 8.28,10.15" opacity="0.45" />
+        <polygon points="12,8 8.28,10.15 8.28,5.85" opacity="0.75" />
+        <polygon points="12,8 8.28,5.85 12,3.7" opacity="0.6" />
+        <polygon points="3,21 12,21 12,12.5 8,14" opacity="0.85" />
+        <polygon points="21,21 12,21 12,12.5 16,14" opacity="0.55" />
+      </g>
     </svg>
   );
 }
@@ -77,10 +101,14 @@ export function Avatar({
   if (preset !== null) {
     return (
       <span
-        className={`inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-b text-white ring-2 ring-white/70 dark:ring-white/10 ${PALETTE[preset]} ${sizeClass} ${className}`}
+        className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br text-white ${PALETTE[preset]} ${GLOW[preset]} ${sizeClass} ${className}`}
         aria-hidden
       >
-        <PersonIcon className="h-[58%] w-[58%]" />
+        {/* Glossy top-left highlight, like light hitting a glass sphere. */}
+        <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_22%,rgba(255,255,255,0.55),transparent_58%)]" />
+        <FacetedPersonIcon className="relative h-[60%] w-[60%] drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]" />
+        {/* Slow diagonal light sweep - a subtle "holographic foil" touch. */}
+        <span className="avatar-shimmer pointer-events-none absolute inset-y-0 -left-full w-1/3 bg-gradient-to-r from-transparent via-white/50 to-transparent" />
       </span>
     );
   }

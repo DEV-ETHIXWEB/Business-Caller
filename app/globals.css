@@ -57,3 +57,26 @@ body {
     transform: translateY(0);
   }
 }
+
+/* A slow light sweep across the preset avatar glyphs - a subtle
+   "holographic foil" touch, not a full loop of activity. */
+@keyframes avatar-shimmer {
+  0%,
+  15% {
+    transform: translateX(-130%) rotate(20deg);
+  }
+  55%,
+  100% {
+    transform: translateX(230%) rotate(20deg);
+  }
+}
+
+.avatar-shimmer {
+  animation: avatar-shimmer 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar-shimmer {
+    animation: none;
+  }
+}
