@@ -151,41 +151,56 @@ compliance step, not something this app's code can work around.
 
 ## Extra features
 
+- **Calls / Texts / Contacts navigation** — a Google Voice-style layout: a
+  nav rail on desktop (left side) and a bottom tab bar on mobile switch
+  between the three main views, each full-screen with its own search box.
+  Starting a new call is a floating **+** button on the Calls tab, which
+  opens a keypad/number-entry overlay that stays open through the call
+  itself until it's hung up.
+- **Call history** — the Calls tab lists every past call (pulled live from
+  Twilio's own Call records via `/api/calls`, most recent first) with who
+  it was with, incoming/outgoing/missed status, duration, and when. Tap a
+  row to call that number again, or use the message/delete icons on the
+  right. Deleting a call permanently removes it from Twilio's records via
+  its own delete, same as messages.
+- **Profile photos** — tap your avatar (nav rail on desktop, top-right on
+  mobile) to open your profile: upload a photo (resized/compressed in the
+  browser before it's ever sent, stored in Vercel Blob — see
+  `BLOB_READ_WRITE_TOKEN` below) or remove it. Anyone without a photo gets
+  an automatically colored initials avatar instead, the same way
+  Gmail/Google Voice do — contacts, call history, and message threads all
+  use the same avatars.
 - **Stays signed in for 14 days** — unlocking (password or Face ID/Touch
   ID) is remembered in the browser for 14 days, refreshed every time the
   app is opened while still valid. So in practice, opening it at least
   once every 14 days keeps it signed in indefinitely; leave it untouched
-  longer than that and it asks to unlock again. Click **Sign out** to end
-  the session immediately regardless of this.
-- **Microphone / speaker picker** — appears above the phone number field.
-  Bluetooth headsets show up automatically once paired with the OS; no
-  extra setup.
+  longer than that and it asks to unlock again. **Sign out** is in the
+  profile panel and ends the session immediately regardless of this.
+- **Microphone / speaker picker** — appears in the call overlay, above the
+  phone number field. Bluetooth headsets show up automatically once paired
+  with the OS; no extra setup.
 - **Mute + keypad** — appear once a call connects, for muting and for
   entering digits into an IVR.
-- **Phone Book** — contacts are stored server-side in a per-person Twilio
-  Sync Document (see `TWILIO_SYNC_SERVICE_SID` below), so each person's list
-  shows up on every device they unlock the dialer from — add one on a
-  laptop, it's there on the phone too — without being visible to anyone
-  else signed in with a different login.
-- **Messages/SMS** — an inbox-style list of every past conversation
-  (pulled from Twilio's real message history, most recent first), tap one
-  to open the full thread with a back button to return to the list, or
-  type a new number to start a fresh conversation. Threads poll
-  `/api/messages` every 5 seconds, which reads Twilio's actual Message
+- **Phone Book (Contacts tab)** — contacts are stored server-side in a
+  per-person Twilio Sync Document (see `TWILIO_SYNC_SERVICE_SID` below), so
+  each person's list shows up on every device they unlock the dialer from —
+  add one on a laptop, it's there on the phone too — without being visible
+  to anyone else signed in with a different login.
+- **Messages/SMS (Texts tab)** — an inbox-style list of every past
+  conversation (pulled from Twilio's real message history, most recent
+  first), tap one to open the full thread with a back button to return to
+  the list, or type a new number to start a fresh conversation. Threads
+  poll `/api/messages` every 5 seconds, which reads Twilio's actual Message
   history for that number (Twilio records every inbound and outbound SMS
   on the account automatically, regardless of any webhook), so a client's
   reply shows up on its own — nothing to configure for that part. If a
   number matches a saved contact, their name shows instead of the raw
   number.
-- **On desktop**, Messages and Phone Book sit as permanent side panels.
-  **On mobile**, tap the ☰ menu (top-left) to open them in a slide-in
-  drawer with tabs — full functionality, just tucked away since there's
-  no spare screen width.
-- **Deleting messages/conversations** — the small trash icon on a
-  conversation row or on an individual message deletes it. This calls
-  Twilio's own delete on the Message resource, so it's a real, permanent
-  removal from Twilio's records (not just hidden in this UI) — there's a
-  confirmation prompt first since it can't be undone.
+- **Deleting messages/conversations/calls** — the small trash icon on a
+  row deletes it. This calls Twilio's own delete on the underlying
+  resource, so it's a real, permanent removal from Twilio's records (not
+  just hidden in this UI) — there's a confirmation prompt first since it
+  can't be undone.
 - Sending SMS requires **SMS capability enabled** (and, for a new number,
   A2P 10DLC registration completed) on that person's own number in the
   Twilio Console — if it's off or unregistered, sends fail with a clear
@@ -203,10 +218,10 @@ compliance step, not something this app's code can work around.
   This is real WebAuthn (passkey) authentication via
   `@simplewebauthn/server` and `@simplewebauthn/browser` — not a password
   autofill shim:
-  - **Setup**: sign in normally with username + password once, then click
-    **"+ Add this device"** near the bottom of the dialer card. That
-    registers a credential tied to this specific browser/device's secure
-    enclave, for that specific username.
+  - **Setup**: sign in normally with username + password once, open your
+    profile panel (tap your avatar), then click **"+ Add this device"**.
+    That registers a credential tied to this specific browser/device's
+    secure enclave, for that specific username.
   - **After that**: enter your username on the lock screen, and the Face
     ID/Touch ID button appears above the password field as a shortcut.
   - **Under the hood**: registering a new credential still requires the
@@ -247,6 +262,7 @@ since it's live right now.
 | `TWILIO_SYNC_SERVICE_SID` | A Sync Service (Console → Explore Products → Sync → Services), used to store each person's Phone Book and Face ID/Touch ID credentials | No, but keep private |
 | `APP_USERS` | A JSON array, one entry per person: `[{"username":"amar","password":"...","phoneNumber":"+12064523433","label":"Amar"}, ...]`. Each `phoneNumber` must be a Voice-enabled Twilio number on your account | **Yes** |
 | `PUBLIC_BASE_URL` | Your deployed Vercel URL, no trailing slash | No |
+| `BLOB_READ_WRITE_TOKEN` | Vercel dashboard → Project → Storage → create a Blob store and attach it (Vercel adds this automatically) | **Yes**, but only for profile photo upload/removal |
 
 **Never** commit `.env.local` (it already can't be — see `.gitignore`), put
 any of the "Yes" rows in frontend code, or paste them anywhere public.
@@ -257,13 +273,16 @@ any of the "Yes" rows in frontend code, or paste them anywhere public.
 app/
   page.tsx                 Renders the dialer
   layout.tsx
-  components/Dialer.tsx    All dialer/phonebook/messaging UI + Twilio Device logic (client-side)
-  api/token/route.ts       Mints Twilio Access Tokens for the signed-in user (server-side, gated by APP_USERS)
+  components/Dialer.tsx    All dialer/calls/texts/contacts/profile UI + Twilio Device logic (client-side)
+  components/Avatar.tsx    Circular avatar - shows an uploaded photo, or a colored initials fallback
+  api/token/route.ts       Mints Twilio Access Tokens for the signed-in user (server-side, gated by APP_USERS); also returns their avatarUrl
   api/voice/route.ts       TwiML webhook Twilio calls to place the outbound leg; resolves caller ID from the caller's identity
   api/sms/route.ts         Sends outbound SMS via the Twilio REST API, from the signed-in user's own number
   api/messages/route.ts    Reads/deletes one conversation's message history live from Twilio, scoped to the signed-in user's number
   api/conversations/route.ts  Reads the signed-in user's conversation list, and deletes a whole conversation
+  api/calls/route.ts       Reads/deletes the signed-in user's call history live from Twilio's own Call records
   api/contacts/route.ts    Reads/writes that user's own Phone Book (stored in Twilio Sync, one document per username)
+  api/avatar/route.ts      Uploads/removes a profile photo (Vercel Blob for the image, Twilio Sync for the URL)
   api/webauthn/register-options/route.ts   Starts registering a Face ID/Touch ID credential (username+password gated)
   api/webauthn/register-verify/route.ts    Verifies + stores that credential under the signed-in username
   api/webauthn/login-options/route.ts      Starts a biometric sign-in for a given username (no password needed - this replaces it)
@@ -278,6 +297,8 @@ lib/
   rateLimit.ts             In-memory best-effort rate limiter
   contacts.ts              Shared Contact type used by api/contacts and the UI
   messageThread.ts         Shared message-thread/conversation types used by the API routes and the UI
+  callLog.ts               Shared CallLogEntry type used by api/calls and the UI
+  profileStore.ts          Reads/writes a profile doc (currently just avatarUrl), one per username
   webauthn.ts              Shared WebAuthn types + Relying Party config (derived from PUBLIC_BASE_URL)
   webauthnStore.ts         Reads/writes registered credentials, one Sync document per username
 .env.example               Template — copy to .env.local, never commit the real one

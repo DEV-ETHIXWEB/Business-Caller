@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { requireUser } from "@/lib/auth";
+import { getProfileClient, readProfile } from "@/lib/profileStore";
 
 // Requires Node's crypto module (timingSafeEqual, and the twilio SDK's own
 // use of Node APIs), so this must run on the Node.js runtime, not Edge.
@@ -13,6 +14,7 @@ const REQUIRED_ENV_VARS = [
   "TWILIO_API_KEY_SID",
   "TWILIO_API_KEY_SECRET",
   "TWILIO_TWIML_APP_SID",
+  "TWILIO_SYNC_SERVICE_SID",
   "APP_USERS",
 ] as const;
 
@@ -45,11 +47,21 @@ export async function POST(req: Request) {
   });
   accessToken.addGrant(voiceGrant);
 
+  // Best-effort - a Sync hiccup here shouldn't block signing in, just means
+  // the avatar falls back to initials until the next successful token mint.
+  let avatarUrl: string | undefined;
+  try {
+    avatarUrl = (await readProfile(getProfileClient(), user.username)).avatarUrl;
+  } catch (err) {
+    console.warn("[api/token] Failed to read profile:", err);
+  }
+
   return NextResponse.json({
     token: accessToken.toJwt(),
     identity: user.identity,
     ttlSeconds: TOKEN_TTL_SECONDS,
     phoneNumber: user.phoneNumber,
     label: user.label,
+    avatarUrl,
   });
 }
