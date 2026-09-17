@@ -617,7 +617,22 @@ export default function Dialer() {
 
   // A short synthesized tap - no audio file to ship or go missing, just a
   // quick oscillator blip for tactile feedback on every dialer interaction.
+  // Called on every tap throughout the app (35+ call sites) - one shared
+  // function, so both the sound and haptic feedback below apply everywhere
+  // at once rather than needing to be wired into each button individually.
   const playTap = useCallback(() => {
+    // Haptics: most Android browsers implement the Vibration API. iOS
+    // Safari does not expose it at all (a WebKit platform choice, not
+    // something a web app can work around), so this is silently a no-op
+    // there - the sound below still plays on every platform regardless.
+    try {
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        navigator.vibrate(12);
+      }
+    } catch {
+      // Never let a vibration failure affect anything else.
+    }
+
     try {
       const AudioCtx =
         window.AudioContext ||
@@ -633,22 +648,22 @@ export default function Dialer() {
       const bodyGain = ctx.createGain();
       body.type = "sine";
       body.frequency.setValueAtTime(220, now);
-      body.frequency.exponentialRampToValueAtTime(85, now + 0.07);
-      bodyGain.gain.setValueAtTime(0.16, now);
-      bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      body.frequency.exponentialRampToValueAtTime(85, now + 0.08);
+      bodyGain.gain.setValueAtTime(0.32, now);
+      bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
       body.connect(bodyGain).connect(ctx.destination);
       body.start(now);
-      body.stop(now + 0.09);
+      body.stop(now + 0.11);
 
       const tap = ctx.createOscillator();
       const tapGain = ctx.createGain();
       tap.type = "triangle";
       tap.frequency.setValueAtTime(1400, now);
-      tapGain.gain.setValueAtTime(0.05, now);
-      tapGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.02);
+      tapGain.gain.setValueAtTime(0.11, now);
+      tapGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.025);
       tap.connect(tapGain).connect(ctx.destination);
       tap.start(now);
-      tap.stop(now + 0.03);
+      tap.stop(now + 0.035);
     } catch {
       // Sound is a nice-to-have; never let it break the actual dialer.
     }
