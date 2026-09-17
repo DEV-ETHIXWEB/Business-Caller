@@ -333,7 +333,7 @@ const SMALL_BUTTON_CLASS =
   "w-full rounded-full bg-gradient-to-b from-slate-800 to-slate-950 py-2 text-xs font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_8px_18px_-8px_rgba(15,23,42,0.5)] transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:from-white dark:to-slate-100 dark:text-slate-900";
 
 const KEYPAD_BUTTON_CLASS =
-  "mx-auto flex h-16 w-16 flex-col items-center justify-center gap-0.5 rounded-full border border-white/60 bg-white/50 font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_14px_28px_-10px_rgba(15,23,42,0.4),0_4px_10px_-4px_rgba(15,23,42,0.2)] backdrop-blur-sm transition-all duration-150 hover:bg-white/80 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_18px_32px_-10px_rgba(192,39,45,0.3),0_6px_14px_-4px_rgba(192,39,45,0.2)] active:scale-90 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_14px_28px_-10px_rgba(0,0,0,0.7),0_4px_10px_-4px_rgba(0,0,0,0.5)] dark:hover:bg-white/10";
+  "mx-auto flex h-16 w-16 flex-col items-center justify-center gap-0.5 rounded-full border border-white/60 bg-white/50 font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_8px_16px_-8px_rgba(15,23,42,0.4),0_3px_6px_-3px_rgba(15,23,42,0.2)] backdrop-blur-sm transition-all duration-150 hover:bg-white/80 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_10px_18px_-8px_rgba(192,39,45,0.3),0_4px_8px_-3px_rgba(192,39,45,0.2)] active:scale-90 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_8px_16px_-8px_rgba(0,0,0,0.7),0_3px_6px_-3px_rgba(0,0,0,0.5)] dark:hover:bg-white/10";
 
 function KeypadButton({ digit, letters, onClick }: { digit: string; letters: string; onClick: () => void }) {
   return (
@@ -2123,7 +2123,7 @@ export default function Dialer() {
               </div>
             )}
 
-            <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="mt-4 grid grid-cols-3 gap-x-2 gap-y-3">
               {KEYPAD_DIGITS.map(({ digit, letters }) => (
                 <KeypadButton key={digit} digit={digit} letters={letters} onClick={() => handleDialPadDigit(digit)} />
               ))}
@@ -2197,7 +2197,7 @@ export default function Dialer() {
             )}
 
             {callStatus === "in-call" && keypadOpen && (
-              <div className="mt-5 grid grid-cols-3 gap-2">
+              <div className="mt-5 grid grid-cols-3 gap-x-2 gap-y-3">
                 {KEYPAD_DIGITS.map(({ digit, letters }) => (
                   <KeypadButton key={digit} digit={digit} letters={letters} onClick={() => handleKeypadPress(digit)} />
                 ))}
@@ -2321,7 +2321,12 @@ export default function Dialer() {
 
       {/* Desktop dial pad - docked permanently on the right rather than
           hidden behind a button, since there's ample spare width there. */}
-      <aside className="hidden lg:flex lg:h-dvh lg:w-[360px] lg:shrink-0 lg:flex-col lg:justify-center lg:overflow-y-auto lg:border-l lg:border-white/50 lg:bg-white/60 lg:p-6 lg:backdrop-blur-2xl lg:backdrop-saturate-150 dark:lg:border-white/10 dark:lg:bg-white/[0.04]">
+      {/* Fixed top padding rather than lg:justify-center - centering a
+          flex item inside an overflow-y-auto container can make its top
+          become unreachable by scroll in some browsers if the content ever
+          grows taller than the viewport (e.g. an active call with every
+          device picker and the DTMF pad open on a short laptop screen). */}
+      <aside className="hidden lg:flex lg:h-dvh lg:w-[360px] lg:shrink-0 lg:flex-col lg:overflow-y-auto lg:border-l lg:border-white/50 lg:bg-white/60 lg:px-6 lg:pb-6 lg:pt-16 lg:backdrop-blur-2xl lg:backdrop-saturate-150 dark:lg:border-white/10 dark:lg:bg-white/[0.04]">
         {callPanelBody(false)}
       </aside>
 
@@ -2368,7 +2373,9 @@ export default function Dialer() {
           Desktop doesn't need this - the aside above is always visible. */}
       {showCallOverlay && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-[fade-in_0.2s_ease-out] lg:hidden">
-          <div className={`${CARD_CLASS} animate-[pop-in_0.25s_cubic-bezier(0.16,1,0.3,1)]`}>{callPanelBody(true)}</div>
+          <div className={`${CARD_CLASS} max-h-[calc(100dvh-2rem)] overflow-y-auto animate-[pop-in_0.25s_cubic-bezier(0.16,1,0.3,1)]`}>
+            {callPanelBody(true)}
+          </div>
         </div>
       )}
 
@@ -2376,7 +2383,7 @@ export default function Dialer() {
       {/* Profile panel */}
       {profileOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-[fade-in_0.2s_ease-out]">
-          <div className={`${CARD_CLASS} animate-[pop-in_0.25s_cubic-bezier(0.16,1,0.3,1)]`}>
+          <div className={`${CARD_CLASS} max-h-[calc(100dvh-2rem)] overflow-y-auto animate-[pop-in_0.25s_cubic-bezier(0.16,1,0.3,1)]`}>
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold tracking-wide text-slate-900 dark:text-white">Profile</h2>
               <button type="button" onClick={() => setProfileOpen(false)} className={MINI_ICON_BUTTON_CLASS} aria-label="Close">
@@ -2419,19 +2426,22 @@ export default function Dialer() {
               )}
 
               <p className="mt-4 text-xs font-medium text-slate-500 dark:text-slate-400">Or pick an avatar</p>
-              <div className="mt-2 flex justify-center gap-2">
+              {/* Wraps (rather than relying on exact-fit math) so the glow
+                  rings never spill past the card's rounded edge on narrow
+                  screens, where this card is well under max-w-sm wide. */}
+              <div className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-2 px-2">
                 {Array.from({ length: PRESET_COUNT }, (_, i) => (
                   <button
                     key={i}
                     type="button"
                     onClick={() => handleChoosePreset(i)}
                     disabled={avatarUploading}
-                    className={`rounded-full transition-all active:scale-90 disabled:opacity-50 ${
+                    className={`shrink-0 rounded-full transition-all active:scale-90 disabled:opacity-50 ${
                       avatarUrl === `preset:${i}` ? "ring-2 ring-[#C0272D] ring-offset-2 ring-offset-white dark:ring-offset-[#0c0d10]" : ""
                     }`}
                     aria-label={`Preset avatar ${i + 1}`}
                   >
-                    <Avatar label="" photoUrl={`preset:${i}`} size="lg" />
+                    <Avatar label="" photoUrl={`preset:${i}`} size="md" />
                   </button>
                 ))}
               </div>

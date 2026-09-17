@@ -17,11 +17,11 @@ const PALETTE = [
 // avatars (see below) - initials avatars stay flat/cheap since they can
 // appear dozens of times in a list.
 const GLOW = [
-  "shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_22px_-4px_rgba(224,85,92,0.9)]",
-  "shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_22px_-4px_rgba(192,39,45,0.9)]",
-  "shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_22px_-4px_rgba(176,65,58,0.9)]",
-  "shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_22px_-4px_rgba(100,116,139,0.8)]",
-  "shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_22px_-4px_rgba(192,39,45,0.55)]",
+  "shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_14px_-3px_rgba(224,85,92,0.9)]",
+  "shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_14px_-3px_rgba(192,39,45,0.9)]",
+  "shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_14px_-3px_rgba(176,65,58,0.9)]",
+  "shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_14px_-3px_rgba(100,116,139,0.8)]",
+  "shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_14px_-3px_rgba(192,39,45,0.55)]",
 ];
 
 export const PRESET_COUNT = PALETTE.length;
