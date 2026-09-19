@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
 import {
+  ConferenceUserError,
   getConferenceClient,
   callBelongsToIdentity,
   ensureConference,
@@ -12,6 +13,9 @@ import {
 // Requires Node's crypto module (via requireUser / the twilio SDK), so
 // this must run on the Node.js runtime, not Edge.
 export const runtime = "nodejs";
+// The conference upgrade waits on Twilio to move both legs, which can take a
+// few seconds - well past a 10s default if anything is slow.
+export const maxDuration = 30;
 
 const REQUIRED_ENV_VARS = [
   "TWILIO_ACCOUNT_SID",
@@ -79,6 +83,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, callSid: participant.callSid });
   } catch (err) {
+    if (err instanceof ConferenceUserError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     console.error("[api/calls/add] Failed:", err);
     return NextResponse.json({ error: "Failed to add the call." }, { status: 502 });
   }

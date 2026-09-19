@@ -94,6 +94,12 @@ export async function POST(req: Request) {
     callerId: user.phoneNumber,
     timeout: RING_TIMEOUT_SECONDS,
     timeLimit: MAX_CALL_SECONDS,
+    // Runs when this <Dial> finishes. For every normal call it just hangs up
+    // (exactly what used to happen with no action at all); it exists so a
+    // call being upgraded by Hold/Add Call can continue into a conference
+    // instead of dropping - see app/api/voice/after-dial/route.ts.
+    action: `${process.env.PUBLIC_BASE_URL}/api/voice/after-dial`,
+    method: "POST",
   });
   dial.number(destination);
 

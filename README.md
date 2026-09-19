@@ -171,8 +171,13 @@ compliance step, not something this app's code can work around.
   has always worked - only the moment Hold or Add Call is actually pressed
   does it get quietly upgraded into a Twilio Conference behind the scenes
   (see `lib/conference.ts`), so calls that never use these features are
-  completely unaffected. Requires `PUBLIC_BASE_URL` (already set) for the
-  hold announcement's webhook; no other new env vars.
+  completely unaffected. The plain call's `<Dial>` has an `action` URL
+  (`/api/voice/after-dial`) that just hangs up for every normal call, but
+  lets the browser leg follow the far leg into the conference when Hold/Add
+  Call redirects it - without that, the browser call would drop the instant
+  the far leg was moved. If an upgrade ever fails midway, the far leg is
+  ended rather than left stranded (and billing) alone in a conference.
+  Requires `PUBLIC_BASE_URL` (already set); no other new env vars.
 - **Call history** — the Calls tab lists every past call (pulled live from
   Twilio's own Call records via `/api/calls`, most recent first) with who
   it was with, incoming/outgoing/missed status, duration, and when. Tap a
@@ -303,6 +308,7 @@ app/
   api/calls/add/route.ts      Dials a new number into a live call, upgrading it to a conference if needed
   api/calls/merge/route.ts    Takes every held participant on a call off hold at once
   api/calls/status/route.ts   Polled by the UI: is this call a conference yet, and who's on it / on hold
+  api/voice/after-dial/route.ts  TwiML webhook: what the browser leg does when its <Dial> ends (hang up, or join a Hold/Add Call conference)
   api/hold-music/route.ts     TwiML webhook: the looping "please wait" announcement played to a held participant
   api/contacts/route.ts    Reads/writes that user's own Phone Book (stored in Twilio Sync, one document per username)
   api/avatar/route.ts      Uploads/removes a profile photo (Vercel Blob for the image, Twilio Sync for the URL)

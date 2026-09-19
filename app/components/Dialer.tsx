@@ -1073,15 +1073,15 @@ export default function Dialer() {
     }
   }, [browserCallSid]);
 
+  // Only polls once a conference actually exists. A normal call that never
+  // used Hold/Add Call has nothing to poll for, and each poll costs several
+  // Twilio API calls - the first status is fetched right after the action
+  // (handleToggleHold/handleAddCallSubmit) that creates the conference.
   useEffect(() => {
-    if (callStatus !== "in-call" || !browserCallSid) return;
-    const initial = setTimeout(() => fetchCallStatus(), 0);
-    const interval = setInterval(() => fetchCallStatus(), 4000);
-    return () => {
-      clearTimeout(initial);
-      clearInterval(interval);
-    };
-  }, [callStatus, browserCallSid, fetchCallStatus]);
+    if (callStatus !== "in-call" || !browserCallSid || !inConference) return;
+    const interval = setInterval(() => fetchCallStatus(), 5000);
+    return () => clearInterval(interval);
+  }, [callStatus, browserCallSid, inConference, fetchCallStatus]);
 
   // Puts the other party (or, once there's more than one, a specific
   // participant) on hold. The very first Hold or Add Call on a given call

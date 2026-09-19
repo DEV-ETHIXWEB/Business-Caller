@@ -21,7 +21,7 @@ const REQUIRED_ENV_VARS = [
 export async function POST(req: Request) {
   const auth = await requireUser(req, {
     rateLimitKey: "calls-status",
-    limit: 60,
+    limit: 200,
     windowMs: 5 * 60 * 1000,
     requiredEnvVars: REQUIRED_ENV_VARS,
   });
