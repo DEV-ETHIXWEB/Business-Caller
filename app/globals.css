@@ -58,6 +58,18 @@ body {
   }
 }
 
+/* Opening a chat on a phone: a short slide-in from the right. */
+@keyframes chat-in {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 /* A slow light sweep across the preset avatar glyphs - a subtle
    "holographic foil" touch, not a full loop of activity. */
 @keyframes avatar-shimmer {
@@ -78,5 +90,40 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .avatar-shimmer {
     animation: none;
+  }
+}
+
+
+/* --- App-like mobile behaviour ------------------------------------------ */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  /* No rubber-banding / pull-to-refresh bounce revealing the page behind. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* No double-tap-to-zoom delay or accidental zoom on rapid taps. */
+button,
+a,
+input,
+textarea,
+select {
+  touch-action: manipulation;
+}
+
+/* iOS Safari zooms the whole page into any focused field whose font is under
+   16px, and does not zoom back out - the "it zooms when I type" problem. Every
+   field is 16px on phones/tablets, whatever size the utility classes give it
+   on desktop. */
+@media (max-width: 1023px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
   }
 }

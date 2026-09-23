@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import type { Call, Device } from "@twilio/voice-sdk";
 import {
@@ -544,6 +544,96 @@ function guessDeviceLabel(): string {
   return `${browser} on ${platform}`;
 }
 
+function SendIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M3.4 20.4 21.3 12.7a.8.8 0 0 0 0-1.4L3.4 3.6a.8.8 0 0 0-1.1.9l1.6 6.3 8.6 1.2-8.6 1.2-1.6 6.3a.8.8 0 0 0 1.1.9Z" />
+    </svg>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m5 12.5 4.5 4.5L19 7.5" />
+    </svg>
+  );
+}
+
+function DoubleCheckIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m2 12.5 4.5 4.5L16 7.5" />
+      <path d="m10.5 16.6.4.4L20.5 7.5" />
+    </svg>
+  );
+}
+
+// WhatsApp-style delivery marks on your own messages: one tick sent, two
+// delivered, and a plain-words note when the carrier rejected it.
+function MessageTicks({ status }: { status: string }) {
+  if (status === "failed" || status === "undelivered") {
+    return <span className="font-semibold text-amber-200">Not delivered</span>;
+  }
+  if (status === "delivered" || status === "read") return <DoubleCheckIcon className="h-3.5 w-3.5" />;
+  if (status === "sent" || status === "partially_delivered") return <CheckIcon className="h-3 w-3" />;
+  return <CheckIcon className="h-3 w-3 opacity-50" />;
+}
+
+function dayLabel(at: number): string {
+  const date = new Date(at);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) return "Today";
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString(
+    [],
+    date.getFullYear() === now.getFullYear()
+      ? { weekday: "long", month: "short", day: "numeric" }
+      : { year: "numeric", month: "short", day: "numeric" },
+  );
+}
+
+function useMediaQuery(query: string): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      const mq = window.matchMedia(query);
+      mq.addEventListener("change", notify);
+      return () => mq.removeEventListener("change", notify);
+    },
+    () => window.matchMedia(query).matches,
+    () => false,
+  );
+}
+
+function subscribeVisualViewport(notify: () => void) {
+  const vv = window.visualViewport;
+  if (!vv) return () => {};
+  vv.addEventListener("resize", notify);
+  vv.addEventListener("scroll", notify);
+  return () => {
+    vv.removeEventListener("resize", notify);
+    vv.removeEventListener("scroll", notify);
+  };
+}
+
+function visualViewportSnapshot(): string {
+  const vv = window.visualViewport;
+  return vv ? `${Math.round(vv.height)}|${Math.round(vv.offsetTop)}` : "";
+}
+
+// The part of the screen that is actually visible. On a phone this shrinks
+// when the on-screen keyboard opens (and iOS may also scroll it), which is
+// what lets the chat stay pinned exactly to the visible area - header at the
+// top, message box right above the keyboard - so nothing jumps or zooms.
+function useVisualViewport(): { height: number; top: number } | null {
+  const key = useSyncExternalStore(subscribeVisualViewport, visualViewportSnapshot, () => "");
+  if (!key) return null;
+  const [height, top] = key.split("|").map(Number);
+  return { height, top };
+}
+
 export default function Dialer() {
   const [unlocked, setUnlocked] = useState(false);
   // True only for the brief moment while checking for a remembered
@@ -632,7 +722,8 @@ export default function Dialer() {
 
   const [messageTo, setMessageTo] = useState("");
   const [messageBody, setMessageBody] = useState("");
-  const [sendingMessage, setSendingMessage] = useState(false);
+  const [pendingMessages, setPendingMessages] = useState<ThreadMessage[]>([]);
+  const [selectedMessageSid, setSelectedMessageSid] = useState<string | null>(null);
   const [smsError, setSmsError] = useState<string | null>(null);
   const [messageLog, setMessageLog] = useState<ThreadMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -648,18 +739,57 @@ export default function Dialer() {
   const [activeThread, setActiveThread] = useState<string | null>(null);
   const threadContactName = activeThread ? contacts.find((c) => c.number === activeThread)?.name : undefined;
 
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const vv = useVisualViewport();
+  const viewportHeight = vv?.height ?? 0;
+
   // Keep the conversation pinned to the latest message as new ones arrive
-  // from polling or are sent.
+  // from polling or are sent - and when the keyboard opens/closes, which
+  // resizes the visible area.
   useEffect(() => {
     const el = threadScrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messageLog]);
+  }, [messageLog, pendingMessages, viewportHeight, activeThread, isDesktop]);
+
+  // The message box grows with what's typed (up to a few lines), like a
+  // messaging app, rather than staying a fixed-height box with its own scroll.
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [messageBody, activeThread, isDesktop]);
+
+  // Phone/browser Back closes an open chat instead of leaving the app.
+  useEffect(() => {
+    if (activeThread && !chatHistoryPushedRef.current) {
+      window.history.pushState({ chat: true }, "");
+      chatHistoryPushedRef.current = true;
+    } else if (!activeThread && chatHistoryPushedRef.current) {
+      chatHistoryPushedRef.current = false;
+      if (window.history.state?.chat) window.history.back();
+    }
+  }, [activeThread]);
+
+  useEffect(() => {
+    function onPopState() {
+      if (!chatHistoryPushedRef.current) return;
+      chatHistoryPushedRef.current = false;
+      setMessageTo("");
+      setActiveThread(null);
+      setSmsError(null);
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const threadScrollRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const chatHistoryPushedRef = useRef(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   // A short synthesized tap - no audio file to ship or go missing, just a
@@ -1625,6 +1755,10 @@ export default function Dialer() {
     setActiveThread(normalized);
   }
 
+  // Sends optimistically, like a messaging app: the message appears in the
+  // chat and the box clears immediately, then the real record replaces it
+  // once Twilio has it. If the send fails, the text goes back in the box so
+  // nothing typed is lost.
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
     playTap();
@@ -1632,10 +1766,7 @@ export default function Dialer() {
 
     if (!activeThread) return;
     const body = messageBody.trim();
-    if (!body) {
-      setSmsError("Message cannot be empty.");
-      return;
-    }
+    if (!body) return;
 
     const saved = loadSession();
     if (!saved) {
@@ -1643,25 +1774,29 @@ export default function Dialer() {
       return;
     }
 
-    setSendingMessage(true);
+    const thread = activeThread;
+    const tempSid = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setPendingMessages((p) => [...p, { sid: tempSid, direction: "outbound", body, status: "sending", at: Date.now() }]);
+    setMessageBody("");
+
     try {
       const res = await fetch("/api/sms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...saved, to: activeThread, message: body }),
+        body: JSON.stringify({ ...saved, to: thread, message: body }),
       });
       const data = (await res.json().catch(() => ({}))) as { sid?: string; status?: string; error?: string };
       if (!res.ok || !data.sid) {
         throw new Error(data.error || "Failed to send message.");
       }
-      setMessageBody("");
       // Pull the thread again immediately rather than waiting for the next
-      // poll tick, so the just-sent message appears right away.
-      await fetchThread(activeThread);
+      // poll tick, so the real record replaces the placeholder right away.
+      await fetchThread(thread);
     } catch (err) {
       setSmsError(err instanceof Error ? err.message : "Failed to send message.");
+      setMessageBody((current) => current || body);
     } finally {
-      setSendingMessage(false);
+      setPendingMessages((p) => p.filter((m) => m.sid !== tempSid));
     }
   }
 
@@ -1843,34 +1978,179 @@ export default function Dialer() {
     </div>
   );
 
-  const textsTabBody = (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2">
-        {activeThread && (
-          <button
-            type="button"
-            onClick={() => {
-              playTap();
-              setMessageTo("");
-              setActiveThread(null);
-              setSmsError(null);
-            }}
-            className={MINI_ICON_BUTTON_CLASS}
-            aria-label="Back to conversations"
-          >
-            <ArrowLeftIcon className="h-3.5 w-3.5" />
-          </button>
+  // A message you sent that the server hasn't listed yet - hidden as soon as
+  // the real record shows up, so it never appears twice.
+  const visiblePending = pendingMessages.filter(
+    (p) => !messageLog.some((m) => m.direction === "outbound" && m.body === p.body && m.at >= p.at - 10000),
+  );
+  const chatMessages = [...messageLog, ...visiblePending];
+
+  function closeChat() {
+    playTap();
+    setMessageTo("");
+    setActiveThread(null);
+    setSmsError(null);
+    setSelectedMessageSid(null);
+  }
+
+  // The open conversation. On a phone it is a full-screen chat pinned to the
+  // visible viewport (so the keyboard never covers or shoves it, and nothing
+  // zooms); on desktop the same view sits inside the Texts panel. Rendered
+  // in exactly one place depending on screen size, never both.
+  const chatView = activeThread ? (
+    <div
+      className={
+        isDesktop
+          ? "flex h-full min-h-0 flex-1 flex-col"
+          : "fixed inset-x-0 z-40 flex flex-col overflow-hidden bg-gradient-to-br from-[#F7F2F1] via-white to-[#F5EFEE] animate-[chat-in_0.22s_ease-out] dark:from-[#0c0d10] dark:via-[#120a0b] dark:to-black"
+      }
+      style={isDesktop ? undefined : { top: vv?.top ?? 0, height: vv?.height ?? "100dvh" }}
+    >
+      <header className="flex shrink-0 items-center gap-1.5 border-b border-slate-900/5 pb-2 pl-1 pr-2 pt-[max(0.5rem,env(safe-area-inset-top))] dark:border-white/5 lg:pt-0">
+        <button
+          type="button"
+          onClick={closeChat}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
+          aria-label="Back to conversations"
+        >
+          <ArrowLeftIcon className="h-5 w-5" />
+        </button>
+        <Avatar label={threadContactName ?? activeThread} size="md" />
+        <div className="min-w-0 flex-1 pl-1">
+          <p className="truncate text-base font-semibold leading-tight text-slate-900 dark:text-white">
+            {threadContactName ?? activeThread}
+          </p>
+          <p className="truncate text-[11px] leading-tight text-slate-500 dark:text-slate-400">
+            {messagesLoading ? "syncing…" : threadContactName ? activeThread : "Text message"}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => dialNumber(activeThread)}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
+          aria-label={`Call ${threadContactName ?? activeThread}`}
+        >
+          <PhoneIcon className="h-5 w-5" />
+        </button>
+      </header>
+
+      <div
+        ref={threadScrollRef}
+        onClick={() => setSelectedMessageSid(null)}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 lg:my-2 lg:rounded-2xl lg:border lg:border-white/40 lg:bg-white/20 dark:lg:border-white/5 dark:lg:bg-black/10"
+      >
+        {chatMessages.length === 0 && !messagesLoading && (
+          <p className="mt-10 text-center text-sm text-slate-400 dark:text-slate-500">
+            No messages yet. Send the first one below.
+          </p>
         )}
-        <h1 className="truncate text-xl font-semibold tracking-wide text-slate-900 dark:text-white">
-          {activeThread ? (threadContactName ?? activeThread) : "Texts"}
-        </h1>
-        {activeThread && messagesLoading && (
-          <span className="ml-auto shrink-0 text-[10px] text-slate-400 dark:text-slate-500">syncing…</span>
-        )}
+        {chatMessages.map((m, i) => {
+          const prev = chatMessages[i - 1];
+          const showDay = !prev || new Date(prev.at).toDateString() !== new Date(m.at).toDateString();
+          const out = m.direction === "outbound";
+          const grouped = !showDay && prev && prev.direction === m.direction;
+          const isPending = m.sid.startsWith("pending-");
+          const selected = selectedMessageSid === m.sid;
+          return (
+            <div key={m.sid}>
+              {showDay && (
+                <div className="my-3 flex justify-center">
+                  <span className="rounded-full bg-slate-900/5 px-3 py-1 text-[11px] font-medium text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                    {dayLabel(m.at)}
+                  </span>
+                </div>
+              )}
+              <div className={`flex ${out ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2"}`}>
+                <div className={`flex max-w-[82%] flex-col lg:max-w-[70%] ${out ? "items-end" : "items-start"}`}>
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!isPending) setSelectedMessageSid(selected ? null : m.sid);
+                    }}
+                    className={`px-3 py-1.5 text-[15px] leading-snug shadow-[0_1px_2px_rgba(15,23,42,0.12)] ${
+                      out
+                        ? "rounded-2xl rounded-br-md bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white"
+                        : "rounded-2xl rounded-bl-md border border-white/60 bg-white/90 text-slate-800 dark:border-white/10 dark:bg-white/10 dark:text-slate-100"
+                    } ${selected ? "ring-2 ring-[#C0272D]/40" : ""}`}
+                  >
+                    <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                    <div
+                      className={`mt-0.5 flex items-center justify-end gap-1 text-[10px] ${out ? "text-white/75" : "text-slate-400"}`}
+                    >
+                      <span>{new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      {out && <MessageTicks status={m.status} />}
+                    </div>
+                  </div>
+                  {selected && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedMessageSid(null);
+                        void handleDeleteMessage(m.sid);
+                      }}
+                      className="mt-1 inline-flex items-center gap-1 rounded-full border border-white/60 bg-white/80 px-2.5 py-1 text-[11px] font-medium text-[#C0272D] shadow-sm dark:border-white/10 dark:bg-white/10"
+                    >
+                      <TrashIcon className="h-3 w-3" />
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {!activeThread ? (
-        <>
+      <div className="shrink-0 border-t border-slate-900/5 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 dark:border-white/5 lg:border-0 lg:px-0 lg:pb-0">
+        {smsError && <p className={`px-2 pb-1.5 ${COMPACT_ERROR_CLASS}`}>{smsError}</p>}
+        <form onSubmit={handleSendMessage} className="flex items-end gap-2">
+          <div className="relative min-w-0 flex-1">
+            <textarea
+              ref={composerRef}
+              value={messageBody}
+              onChange={(e) => setMessageBody(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter sends on a computer; on a phone it's a new line, since
+                // the on-screen keyboard has no Shift.
+                if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+                  e.preventDefault();
+                  e.currentTarget.form?.requestSubmit();
+                }
+              }}
+              rows={1}
+              maxLength={MAX_SMS_LENGTH}
+              placeholder="Message"
+              className="block max-h-[120px] min-h-[44px] w-full resize-none rounded-3xl border border-slate-900/10 bg-white/90 px-4 py-[10px] text-base leading-snug text-slate-900 shadow-[inset_0_1px_3px_rgba(15,23,42,0.06)] outline-none placeholder:text-slate-400 focus:border-[#C0272D]/40 dark:border-white/10 dark:bg-white/10 dark:text-slate-50 dark:placeholder:text-slate-500"
+              aria-label="Message"
+            />
+            {messageBody.length > MAX_SMS_LENGTH - 200 && (
+              <span className="pointer-events-none absolute -top-4 right-3 text-[10px] text-slate-400">
+                {messageBody.length}/{MAX_SMS_LENGTH}
+              </span>
+            )}
+          </div>
+          <button
+            type="submit"
+            // Keeps the keyboard open after sending, so you can keep typing.
+            onPointerDown={(e) => e.preventDefault()}
+            disabled={!messageBody.trim()}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[0_8px_18px_-8px_rgba(192,39,45,0.7)] transition-all active:scale-90 disabled:opacity-40 disabled:shadow-none"
+            aria-label="Send"
+          >
+            <SendIcon className="h-5 w-5" />
+          </button>
+        </form>
+      </div>
+    </div>
+  ) : null;
+
+  const textsListBody = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-2">
+        <h1 className="truncate text-xl font-semibold tracking-wide text-slate-900 dark:text-white">Texts</h1>
+      </div>
+
           <form onSubmit={handleOpenThread} className="mt-3">
             <div className="flex gap-2">
               <input
@@ -1947,67 +2227,12 @@ export default function Dialer() {
               );
             })}
           </div>
-        </>
-      ) : (
-        <>
-          <div
-            ref={threadScrollRef}
-            className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto rounded-xl border border-white/40 bg-white/20 p-3 dark:border-white/5 dark:bg-black/10"
-          >
-            {messageLog.length === 0 && !messagesLoading && (
-              <p className="p-2 text-center text-xs text-slate-400 dark:text-slate-500">No messages yet.</p>
-            )}
-            {messageLog.map((m) => (
-              <div key={m.sid} className={`flex ${m.direction === "outbound" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[75%] rounded-2xl px-3 py-1.5 text-xs ${
-                    m.direction === "outbound"
-                      ? "bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white"
-                      : "border border-white/60 bg-white/80 text-slate-700 dark:border-white/10 dark:bg-white/10 dark:text-slate-200"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                  <div
-                    className={`mt-0.5 flex items-center gap-1.5 text-[10px] ${m.direction === "outbound" ? "text-white/70" : "text-slate-400 dark:text-slate-500"}`}
-                  >
-                    <span>{new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteMessage(m.sid)}
-                      className="opacity-60 transition-opacity hover:opacity-100"
-                      aria-label="Delete message"
-                    >
-                      <TrashIcon className="h-2.5 w-2.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <form onSubmit={handleSendMessage} className="mt-2 space-y-2 pb-24 lg:pb-0">
-            <textarea
-              value={messageBody}
-              onChange={(e) => setMessageBody(e.target.value)}
-              placeholder="Type a message…"
-              rows={2}
-              maxLength={MAX_SMS_LENGTH}
-              className={`${COMPACT_INPUT_CLASS} resize-none`}
-              aria-label="Message body"
-            />
-            {smsError && <p className={COMPACT_ERROR_CLASS}>{smsError}</p>}
-            <button
-              type="submit"
-              disabled={sendingMessage || !messageTo.trim() || !messageBody.trim()}
-              className={SMALL_BUTTON_CLASS}
-            >
-              {sendingMessage ? "Sending…" : "Send SMS"}
-            </button>
-          </form>
-        </>
-      )}
     </div>
   );
+
+  // Desktop shows the chat inside this panel; on a phone the chat is a
+  // separate full-screen layer (see chatView above), so this stays the list.
+  const textsTabBody = activeThread && isDesktop ? chatView : textsListBody;
 
   const contactsTabBody = (
     <div className="flex h-full min-h-0 flex-col">
@@ -2638,6 +2863,11 @@ export default function Dialer() {
           Contacts
         </button>
       </nav>
+
+      {/* Phone: the open chat is a full-screen layer over everything, including
+          the bottom tab bar (as in a messaging app). Sits below the call overlay
+          so tapping Call from a chat still opens the dialer on top. */}
+      {!isDesktop && activeTab === "texts" && chatView}
 
       {/* Mobile-only call overlay - open on demand from the Calls tab's
           FAB, and forced open for the whole lifetime of an active call

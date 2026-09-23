@@ -26,6 +26,18 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#0c0d10",
+  width: "device-width",
+  initialScale: 1,
+  // Stops the browser zooming the page when a field is focused, so typing a
+  // message doesn't shove the whole layout around (the 16px rule in
+  // globals.css is what actually prevents iOS Safari's focus zoom; this
+  // covers the browsers that honour the viewport instead).
+  maximumScale: 1,
+  // Draw under the notch/home-indicator; the UI pads for the safe areas.
+  viewportFit: "cover",
+  // Android Chrome: shrink the layout when the keyboard opens instead of
+  // covering the bottom of the page.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

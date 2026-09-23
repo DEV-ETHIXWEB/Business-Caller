@@ -209,6 +209,17 @@ compliance step, not something this app's code can work around.
   each person's list shows up on every device they unlock the dialer from —
   add one on a laptop, it's there on the phone too — without being visible
   to anyone else signed in with a different login.
+- **Chat view (phones)** — opening a conversation on a phone shows a
+  full-screen, WhatsApp-style chat: name/avatar and a Call button pinned at
+  the top, message bubbles with day separators and delivery ticks (one tick
+  sent, two delivered, "Not delivered" when the carrier rejected it), and
+  the message box pinned right above the keyboard. Sending is instant (your
+  message appears immediately and the box clears; if the send fails, your
+  text is put back), the box grows as you type, and the phone's Back button
+  closes the chat. Nothing zooms when you tap the box: every field is 16px
+  on phones (iOS Safari zooms into anything smaller) and the page scale is
+  locked. On desktop the same chat sits inside the Texts panel, and Enter
+  sends. Tap a message to reveal Delete.
 - **Messages/SMS (Texts tab)** — an inbox-style list of every past
   conversation (pulled from Twilio's real message history, most recent
   first), tap one to open the full thread with a back button to return to
