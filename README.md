@@ -255,27 +255,72 @@ compliance step, not something this app's code can work around.
     then tap Send, or the bin to throw it away. Up to 40 seconds, with a live
     timer and level bars. Notes play in the chat with a waveform, a seek bar,
     1x / 1.5x / 2x speed, and only one plays at a time.
-  - *Photos*: the paperclip attaches a photo (the camera too, on a phone),
-    shrunk before sending, with an optional caption. Tap a photo to view it
-    full screen.
+  - *Attachments*: the paperclip opens a grid for Photo, Camera (on a phone),
+    Video, Audio, Document (PDF or a contact .vcf), GIF, Location, Contact,
+    Poll and Event. Up to 5 files at once, with a caption. Photos are shrunk
+    to fit; GIFs are sent as-is so they stay animated. You can also paste a
+    picture from the clipboard, or drag and drop files onto the chat.
+  - *Stickers*: built-in packs (drawn from emoji onto a picture, so no sticker
+    library or paid service is involved), or make your own from a photo -
+    saved on this device, sent as a plain PNG picture.
+  - *Formatting*: `*bold*`, `_italic_`, `~strike~`, `` `mono` ``, `> quotes`,
+    bulleted and numbered lists, and \`\`\` code blocks \`\`\`, the same
+    markers WhatsApp uses. Select some text for a formatting button (or use
+    Ctrl/Cmd+B, +I, +Shift+X, +Shift+M on a computer).
+  - *Replies*: swipe a message on a phone (or use its menu) to quote it above
+    your answer; tapping a quote jumps to and highlights the original.
+  - *Message actions*: select one or more messages for Copy, Forward (with any
+    attachment - the server copies it from Twilio, nothing is re-uploaded),
+    Star, or Delete ("for me", which only hides it here, or "permanently",
+    which removes it from Twilio's records). A single message's menu adds
+    React (a small emoji chip; optionally also texted, see Settings), Message
+    info (status, cost, segments, straight from Twilio), Pin to the top of the
+    chat, Edit and resend (sends a new text; the original stays as it was, SMS
+    cannot truly edit a sent message), and Save or share any attachment.
+  - *Search*: inside a chat (highlighted matches, next/previous, and a
+    calendar button to jump to a date), or across the whole list.
+  - *Polls, events, locations and contact cards*: plain texts with a
+    recognisable shape, so they read fine as an ordinary SMS on any phone but
+    show as a card here. A poll's or event's replies (a number, or
+    YES/NO/MAYBE) are tallied automatically. A location shows a live, free
+    map (OpenStreetMap, no key and no cost). A contact card can be saved to
+    your Contacts.
   - *Chat list*: unread dots and a count on the Texts tab and in the browser
-    tab title, pin chats to the top, mark as unread, unsent drafts ("Draft:"),
-    All / Unread / Pinned filters, and "Voice message" / "Photo" previews.
-    Long press a chat on a phone, or right click or use the dots on a
-    computer. The list refreshes itself every 20 seconds and plays a soft
-    chime for a new text (see Settings to turn sounds off).
-  - *In a chat*: search inside the chat (highlighted, next/previous), forward
-    a message's text to someone else, copy, delete, and pin from the menu.
-  - Unread, pins and drafts are remembered per person on each device (Twilio
-    has no "read" flag to ask). Chats that were already there the first time a
-    device is used do not show as unread.
-  - *How voice notes and photos travel*: as MMS from your Twilio number, so
-    they need an MMS-capable US or Canadian number (all three numbers here
-    are) and the recipient's carrier to accept picture messages. The file is
-    parked in Vercel Blob (`BLOB_READ_WRITE_TOKEN`, already used for profile
-    photos) under an unguessable name so Twilio can fetch it, and files older
-    than 3 days are swept out. Voice notes are sent as small mono WAV files
-    because those play on every phone. Received attachments are served through
+    tab title, All / Unread / Favourites / Pinned / Archived / label filters,
+    and "Voice message" / "Photo" / poll / event previews. Long press a chat
+    on a phone, or right click or use its dots on a computer, for pin,
+    favourite, archive, mute (8 hours / 1 week / always), label, lock or
+    block. "Select chats" ticks several at once for a bulk action. The list
+    refreshes itself every 20 seconds and plays a sound for a new text (see
+    Settings for the sound, or to turn it off).
+  - *Contact info*: tap a chat's name to see every photo, video, document and
+    link shared in it, and every per-chat setting (favourite, archive, lock,
+    disappearing messages, wallpaper, labels) plus Export chat (a `.txt`
+    download), Copy chat link (opens straight to that chat), Block and Delete.
+  - *Settings*: a bubble colour, a chat wallpaper (per chat or app-wide), a
+    message sound with a preview, desktop notifications (with or without the
+    message text shown), a list of blocked contacts, and Backup/Restore for
+    all of the above plus pins, stars, favourites and labels (the texts
+    themselves already live in Twilio; this is everything else, exported as
+    one JSON file for moving to another device).
+  - *App lock and chat lock*: a 4 to 8 digit PIN (never stored - only a salted,
+    hashed copy on this device) locks the whole app, with a choice of when it
+    locks again (manually, 1 minute, 15 minutes or 1 hour) and a lockout that
+    grows after repeated wrong tries. Individual chats can be locked too; they
+    disappear from the list and reopen from "Locked chats" in the list's menu
+    or by typing a secret code (also set in Settings) into the Texts search
+    box.
+  - Unread, pins, drafts, favourites, archive, mute, labels, stars, reactions
+    and the lock are all remembered per person on each device (Twilio has no
+    "read", "starred" or "muted" flag to ask). Chats that were already there
+    the first time a device is used do not show as unread.
+  - *How attachments travel*: as MMS from your Twilio number, so they need an
+    MMS-capable US or Canadian number (all three numbers here are) and the
+    recipient's carrier to accept picture messages. Files are parked in
+    Vercel Blob (`BLOB_READ_WRITE_TOKEN`, already used for profile photos)
+    under an unguessable name so Twilio can fetch them, and files older than
+    3 days are swept out. Voice notes are sent as small mono WAV files because
+    those play on every phone. Received attachments are served through
     `/api/media`, which only accepts signed, expiring links.
 - **Messages/SMS (Texts tab)**: an inbox-style list of every past
   conversation (pulled from Twilio's real message history, most recent
@@ -368,11 +413,23 @@ app/
   components/Dialer.tsx    All dialer/calls/texts/contacts/profile UI + Twilio Device logic (client-side)
   components/Avatar.tsx    Circular avatar - shows an uploaded photo, or a colored initials fallback
   components/icons.tsx     Every icon in the app, drawn to one style (1.8 line weight, decorative by default). Add new icons here, not inline
-  components/chat/         Chat pieces: Composer (emoji, mic, attach), EmojiPicker, VoicePlayer, MediaViews, ConversationList
+  components/chat/         Chat pieces: Composer, EmojiPicker, VoicePlayer, MediaViews, MessageBubble, RichText, StructuredCards (poll/event/location/contact), ConversationList, ChatInfo, Builders (poll/event/location), PersonPicker, Sheet, ConfirmSheet, StarredView, MessageInfoDialog
+  components/lock/LockUI.tsx  The PIN pad, the full-screen app lock, and the PIN/secret-code setup sheets
+  lib/settings.ts          Per-device display settings (theme, text size, bubble colour, sounds, notifications...), applied before first paint
+  lib/chatPrefs.ts         Per-person, per-device chat state: pins, favourites, archive, mute, labels, drafts, stars, reactions, hidden/locked chats, backup export/import
+  lib/lock.ts              PIN and secret-code hashing (PBKDF2, salted, never stores the PIN itself) and the wrong-try lockout
+  lib/richText.ts          Parses `*bold*`/lists/quotes, and the plain-text "shape" of polls, events, locations and contact cards
+  lib/attachments.ts       Prepares picked/pasted/dropped files (shrinks photos, checks type and a shared size budget) before sending
+  lib/outgoingMedia.ts     Server-side: validates and uploads new attachments, or copies a forwarded one from an existing Twilio message
+  lib/stickers.ts          Built-in sticker packs (drawn from emoji) and "make your own from a photo", kept on this device
+  lib/emoji.ts             The emoji picker's data, search and recents
+  lib/voice.ts             Records a voice note and encodes it to a small mono WAV
+  lib/imageResize.ts       Shrinks a picked photo to fit the outgoing size budget
   api/token/route.ts       Mints Twilio Access Tokens for the signed-in user (server-side, gated by APP_USERS); also returns their avatarUrl
   api/voice/route.ts       TwiML webhook Twilio calls to place the outbound leg; resolves caller ID from the caller's identity
-  api/sms/route.ts         Sends outbound SMS or MMS (voice note, photo) via the Twilio REST API, from the signed-in user's own number
+  api/sms/route.ts         Sends outbound SMS or MMS (voice note, photo, forwarded attachment) via the Twilio REST API, from the signed-in user's own number
   api/messages/route.ts    Reads/deletes one conversation's message history live from Twilio, scoped to the signed-in user's number
+  api/messages/info/route.ts  Reads one message's delivery status, cost and segment count from Twilio
   api/media/route.ts       Serves one MMS attachment (voice note, photo) from Twilio behind a signed, expiring link
   api/conversations/route.ts  Reads the signed-in user's conversation list, and deletes a whole conversation
   api/calls/route.ts       Reads/deletes the signed-in user's call history live from Twilio's own Call records

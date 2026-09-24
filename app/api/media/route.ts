@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getClientIp, rateLimit } from "@/lib/rateLimit";
-import { MEDIA_SID_RE, MESSAGE_SID_RE, verifyMediaSignature } from "@/lib/media";
+import { MEDIA_SID_RE, MESSAGE_SID_RE, MediaFetchError, fetchTwilioMedia, verifyMediaSignature } from "@/lib/media";
 
 // Requires Node's crypto module, so this must run on the Node.js runtime.
 export const runtime = "nodejs";
@@ -37,28 +37,18 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 
-  const auth = Buffer.from(`${process.env.TWILIO_API_KEY_SID}:${process.env.TWILIO_API_KEY_SECRET}`).toString("base64");
-  // TWILIO_API_BASE only exists so the tests can point this at a fake.
-  const base = process.env.TWILIO_API_BASE || "https://api.twilio.com";
-  const source = `${base}/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages/${messageSid}/Media/${mediaSid}`;
-
-  let upstream: Response;
+  let bytes: Buffer;
+  let contentType: string;
   try {
-    upstream = await fetch(source, { headers: { Authorization: `Basic ${auth}` }, redirect: "follow" });
+    ({ bytes, contentType } = await fetchTwilioMedia(messageSid, mediaSid, MAX_BYTES));
   } catch (err) {
+    if (err instanceof MediaFetchError) {
+      return NextResponse.json({ error: err.status === 413 ? "Attachment too large." : "Not found." }, { status: err.status === 404 ? 404 : err.status === 413 ? 413 : 502 });
+    }
     console.error("[api/media] Twilio fetch failed:", err);
     return NextResponse.json({ error: "Could not load the attachment." }, { status: 502 });
   }
-  if (!upstream.ok) {
-    return NextResponse.json({ error: "Not found." }, { status: upstream.status === 404 ? 404 : 502 });
-  }
 
-  const bytes = Buffer.from(await upstream.arrayBuffer());
-  if (bytes.byteLength > MAX_BYTES) {
-    return NextResponse.json({ error: "Attachment too large." }, { status: 413 });
-  }
-
-  const contentType = (upstream.headers.get("content-type") ?? "application/octet-stream").split(";")[0].trim();
   const inline = INLINE_TYPE_RE.test(contentType);
   const headers: Record<string, string> = {
     "Content-Type": inline ? contentType : "application/octet-stream",

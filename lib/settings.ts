@@ -10,6 +10,8 @@ import { useCallback, useSyncExternalStore } from "react";
 export type ThemeSetting = "system" | "light" | "dark";
 export type TextSizeSetting = "small" | "medium" | "large" | "xlarge";
 export type WallpaperSetting = "dots" | "blush" | "plain";
+export type BubbleTheme = "crimson" | "wine" | "charcoal" | "black";
+export type MessageSound = "chime" | "pop" | "bell" | "off";
 
 export interface Settings {
   theme: ThemeSetting;
@@ -23,6 +25,16 @@ export interface Settings {
   enterToSend: boolean;
   /** Also text the other person your emoji reaction (costs one SMS each). */
   reactionsAsText: boolean;
+  /** Load photos, videos and voice notes as soon as a chat opens (off = tap to load, saves data). */
+  autoDownload: boolean;
+  /** Colour of your own message bubbles. */
+  bubbleTheme: BubbleTheme;
+  /** The sound for a new text while the app is open. */
+  messageSound: MessageSound;
+  /** Show the message text in a desktop notification (off = just "New message"). */
+  notifyPreview: boolean;
+  /** Pop up a desktop notification for a new text while the tab is in the background. */
+  desktopNotifications: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -33,6 +45,11 @@ export const DEFAULT_SETTINGS: Settings = {
   haptics: true,
   enterToSend: true,
   reactionsAsText: false,
+  autoDownload: true,
+  bubbleTheme: "crimson",
+  messageSound: "chime",
+  notifyPreview: true,
+  desktopNotifications: false,
 };
 
 export const SETTINGS_KEY = "dialer_settings";
@@ -40,6 +57,8 @@ export const SETTINGS_KEY = "dialer_settings";
 const THEMES: ThemeSetting[] = ["system", "light", "dark"];
 const TEXT_SIZES: TextSizeSetting[] = ["small", "medium", "large", "xlarge"];
 const WALLPAPERS: WallpaperSetting[] = ["dots", "blush", "plain"];
+const BUBBLES: BubbleTheme[] = ["crimson", "wine", "charcoal", "black"];
+const SOUNDS: MessageSound[] = ["chime", "pop", "bell", "off"];
 
 function parseSettings(raw: string | null): Settings {
   if (!raw) return DEFAULT_SETTINGS;
@@ -57,6 +76,11 @@ function parseSettings(raw: string | null): Settings {
       haptics: typeof data.haptics === "boolean" ? data.haptics : DEFAULT_SETTINGS.haptics,
       enterToSend: typeof data.enterToSend === "boolean" ? data.enterToSend : DEFAULT_SETTINGS.enterToSend,
       reactionsAsText: typeof data.reactionsAsText === "boolean" ? data.reactionsAsText : DEFAULT_SETTINGS.reactionsAsText,
+      autoDownload: typeof data.autoDownload === "boolean" ? data.autoDownload : DEFAULT_SETTINGS.autoDownload,
+      bubbleTheme: BUBBLES.includes(data.bubbleTheme as BubbleTheme) ? (data.bubbleTheme as BubbleTheme) : DEFAULT_SETTINGS.bubbleTheme,
+      messageSound: SOUNDS.includes(data.messageSound as MessageSound) ? (data.messageSound as MessageSound) : DEFAULT_SETTINGS.messageSound,
+      notifyPreview: typeof data.notifyPreview === "boolean" ? data.notifyPreview : DEFAULT_SETTINGS.notifyPreview,
+      desktopNotifications: typeof data.desktopNotifications === "boolean" ? data.desktopNotifications : DEFAULT_SETTINGS.desktopNotifications,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -113,6 +137,7 @@ export function applySettings(settings: Settings) {
   root.classList.toggle("dark", dark);
   root.dataset.textSize = settings.textSize;
   root.dataset.wallpaper = settings.wallpaper;
+  root.dataset.bubble = settings.bubbleTheme;
 }
 
 export function useSettings(): [Settings, (patch: Partial<Settings>) => void] {

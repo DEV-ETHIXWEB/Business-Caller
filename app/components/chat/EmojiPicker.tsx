@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SearchIcon } from "../icons";
+import { PlusIcon, SearchIcon, TrashIcon } from "../icons";
+import { STICKER_PACKS, deleteMySticker, loadMyStickers, photoToSticker, saveMySticker } from "@/lib/stickers";
 import { EMOJI_CATEGORIES, loadRecentEmoji, rememberEmoji, searchEmoji } from "@/lib/emoji";
 
 
@@ -10,13 +11,23 @@ import { EMOJI_CATEGORIES, loadRecentEmoji, rememberEmoji, searchEmoji } from "@
 // category tabs, and a "recent" strip.
 export function EmojiPicker({
   onPick,
+  onSticker,
+  username,
+  initialMode = "emoji",
   className = "",
   height = "16rem",
 }: {
   onPick: (emoji: string) => void;
+  /** Sends a sticker: a big emoji, or one of your own as a PNG picture. */
+  onSticker?: (sticker: { emoji?: string; dataUrl?: string }) => void;
+  username?: string;
+  initialMode?: "emoji" | "stickers";
   className?: string;
   height?: string;
 }) {
+  const [mode, setMode] = useState<"emoji" | "stickers">(onSticker ? initialMode : "emoji");
+  const [mine, setMine] = useState<string[]>([]);
+  const [stickerError, setStickerError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>([]);
   const [active, setActive] = useState<string>("smileys");
@@ -25,9 +36,12 @@ export function EmojiPicker({
 
   useEffect(() => {
     // Recents live in localStorage, which the server render cannot see.
-    const timer = setTimeout(() => setRecent(loadRecentEmoji()), 0);
+    const timer = setTimeout(() => {
+      setRecent(loadRecentEmoji());
+      if (username) setMine(loadMyStickers(username));
+    }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [username]);
 
   const results = useMemo(() => searchEmoji(query), [query]);
   const searching = query.trim().length > 0;
@@ -70,6 +84,82 @@ export function EmojiPicker({
         if ((e.target as HTMLElement).tagName !== "INPUT") e.preventDefault();
       }}
     >
+      {onSticker && (
+        <div className="flex shrink-0 gap-1 px-3 pt-3" role="tablist" aria-label="Emoji or stickers">
+          {(["emoji", "stickers"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={mode === m}
+              onClick={() => setMode(m)}
+              className={`flex-1 rounded-full py-1.5 text-xs font-semibold capitalize transition-all ${mode === m ? "bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white" : "bg-slate-900/5 text-slate-600 dark:bg-white/10 dark:text-slate-300"}`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {mode === "stickers" && onSticker ? (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 pt-2" data-testid="sticker-panel">
+          <p className="pb-1 text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-400">My stickers</p>
+          <div className="grid grid-cols-5 gap-1.5">
+            <label className="flex aspect-square cursor-pointer items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 hover:bg-slate-900/5 dark:border-white/20 dark:text-slate-300" aria-label="Make a sticker from a photo">
+              <PlusIcon className="h-6 w-6" />
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file || !username) return;
+                  setStickerError(null);
+                  try {
+                    const dataUrl = await photoToSticker(file);
+                    const res = saveMySticker(username, dataUrl);
+                    setMine(res.list);
+                    if (!res.saved) setStickerError("Your browser has no room to keep it, but you can still send it now.");
+                  } catch (err) {
+                    setStickerError(err instanceof Error ? err.message : "Could not make the sticker.");
+                  }
+                }}
+              />
+            </label>
+            {mine.map((src, i) => (
+              <div key={i} className="group relative aspect-square">
+                <button type="button" onClick={() => onSticker({ dataUrl: src })} className="h-full w-full rounded-2xl bg-slate-900/[0.04] p-1 active:scale-95 dark:bg-white/[0.06]" aria-label={`Send my sticker ${i + 1}`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt="" className="h-full w-full object-contain" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => username && setMine(deleteMySticker(username, src))}
+                  className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/70 text-white opacity-0 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+                  aria-label={`Delete my sticker ${i + 1}`}
+                >
+                  <TrashIcon className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+          {stickerError && <p className="pt-1 text-xs text-red-600 dark:text-red-400">{stickerError}</p>}
+          {STICKER_PACKS.map((pack) => (
+            <section key={pack.id} aria-label={pack.label}>
+              <p className="pb-1 pt-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-400">{pack.label}</p>
+              <div className="grid grid-cols-5 gap-1.5">
+                {pack.items.map((emoji) => (
+                  <button key={emoji} type="button" onClick={() => onSticker({ emoji })} className="flex aspect-square items-center justify-center rounded-2xl bg-slate-900/[0.04] text-[2.25rem] leading-none transition-transform hover:bg-slate-900/[0.08] active:scale-90 dark:bg-white/[0.06]" aria-label={`Send ${emoji} sticker`}>
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+      <>
       <div className="relative shrink-0 px-3 pt-3">
         <SearchIcon className="pointer-events-none absolute left-6 top-1/2 mt-1.5 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
         <input
@@ -143,6 +233,8 @@ export function EmojiPicker({
           </>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

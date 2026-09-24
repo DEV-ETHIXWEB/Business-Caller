@@ -43,7 +43,7 @@ export const viewport: Viewport = {
 // Runs before first paint so the saved theme, text size and wallpaper are
 // already on <html> when the page appears (no light flash in dark mode).
 // Mirrors applySettings() in lib/settings.ts.
-const SETTINGS_BOOT_SCRIPT = `(function(){try{var s={};try{s=JSON.parse(localStorage.getItem("dialer_settings")||"{}")||{};}catch(x){}var r=document.documentElement;var d=s.theme==="dark"||((s.theme===undefined||s.theme==="system")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)r.classList.add("dark");r.dataset.textSize=s.textSize||"medium";r.dataset.wallpaper=s.wallpaper||"dots";}catch(e){}})();`;
+const SETTINGS_BOOT_SCRIPT = `(function(){try{var s={};try{s=JSON.parse(localStorage.getItem("dialer_settings")||"{}")||{};}catch(x){}var r=document.documentElement;var d=s.theme==="dark"||((s.theme===undefined||s.theme==="system")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)r.classList.add("dark");r.dataset.textSize=s.textSize||"medium";r.dataset.wallpaper=s.wallpaper||"dots";r.dataset.bubble=s.bubbleTheme||"crimson";}catch(e){}})();`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

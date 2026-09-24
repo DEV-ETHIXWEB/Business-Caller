@@ -32,6 +32,8 @@ export interface BubbleProps {
   /** Replies that count as votes if this message is a poll or an event. */
   votes: Vote[];
   isKnownNumber: (number: string) => boolean;
+  /** Off = photos, videos and voice notes wait for a tap before loading. */
+  autoLoadMedia: boolean;
   /** Broadcast lists show who a reply came from. */
   senderLabel?: string;
   onSelect: (mode: "toggle" | "start") => void;
@@ -120,7 +122,7 @@ export function MessageBubble(p: BubbleProps) {
     ? "px-1 py-0.5"
     : `${hasMedia || structured ? "p-1" : "px-3 py-1.5"} shadow-[0_1px_1.5px_rgba(15,23,42,0.14)] ${
         out
-          ? `rounded-2xl bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white ${p.grouped ? "" : "bubble-tail-out rounded-tr-none"}`
+          ? `rounded-2xl bubble-out ${p.grouped ? "" : "bubble-tail-out rounded-tr-none"}`
           : `rounded-2xl bg-white text-slate-800 dark:bg-[#26272c] dark:text-slate-100 ${p.grouped ? "" : "bubble-tail-in rounded-tl-none"}`
       }`;
 
@@ -176,7 +178,7 @@ export function MessageBubble(p: BubbleProps) {
           <div className="flex flex-col gap-1">
             {m.media!.map((media) => (
               <div key={media.sid} className={media.kind === "audio" ? "px-2 pt-1.5" : ""}>
-                <MediaView media={media} out={out} />
+                <MediaView media={media} out={out} deferred={!p.autoLoadMedia} />
               </div>
             ))}
           </div>

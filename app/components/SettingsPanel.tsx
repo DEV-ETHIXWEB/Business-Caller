@@ -2,7 +2,8 @@
 
 import { Avatar } from "./Avatar";
 import { ChevronRightIcon, CloseIcon } from "./icons";
-import type { Settings, ThemeSetting, TextSizeSetting, WallpaperSetting } from "@/lib/settings";
+import type { Settings, ThemeSetting, TextSizeSetting, WallpaperSetting, BubbleTheme, MessageSound } from "@/lib/settings";
+import type { LockConfig } from "@/lib/lock";
 
 export interface ProfileStatusValue {
   emoji: string;
@@ -16,7 +17,7 @@ const LABEL_CLASS = "text-xs font-semibold uppercase tracking-wider text-slate-5
 
 
 
-function Segmented<T extends string>({
+export function Segmented<T extends string>({
   label,
   value,
   options,
@@ -52,7 +53,7 @@ function Segmented<T extends string>({
   );
 }
 
-function Toggle({
+export function Toggle({
   label,
   hint,
   checked,
@@ -116,6 +117,19 @@ export function SettingsPanel({
   onSignOut,
   signOutDisabled,
   onClose,
+  blocked,
+  onUnblock,
+  onBackup,
+  onRestore,
+  onPreviewSound,
+  onRequestNotifications,
+  lock,
+  onSetupLock,
+  onChangePin,
+  onDisableLock,
+  onSetAutoLock,
+  onSetupSecret,
+  onClearSecret,
 }: {
   settings: Settings;
   onChange: (patch: Partial<Settings>) => void;
@@ -128,6 +142,20 @@ export function SettingsPanel({
   onSignOut: () => void;
   signOutDisabled: boolean;
   onClose: () => void;
+  blocked: { number: string; name?: string }[];
+  onUnblock: (number: string) => void;
+  onBackup: () => void;
+  onRestore: (file: File) => void;
+  onPreviewSound: (sound: MessageSound) => void;
+  /** Asks the browser for notification permission; resolves to whether it was granted. */
+  onRequestNotifications: () => Promise<boolean>;
+  lock: LockConfig | null;
+  onSetupLock: () => void;
+  onChangePin: () => void;
+  onDisableLock: () => void;
+  onSetAutoLock: (minutes: number) => void;
+  onSetupSecret: () => void;
+  onClearSecret: () => void;
 }) {
   const themeOptions: { value: ThemeSetting; label: string }[] = [
     { value: "system", label: "System" },
@@ -218,6 +246,35 @@ export function SettingsPanel({
               })}
             </div>
 
+
+            <p className="mt-4 text-sm font-medium text-slate-800 dark:text-slate-100">Bubble colour</p>
+            <div className="mt-2 grid grid-cols-4 gap-2" role="radiogroup" aria-label="Bubble colour">
+              {(
+                [
+                  ["crimson", "Crimson", "from-[#e0555c] to-[#C0272D]"],
+                  ["wine", "Wine", "from-[#9a2f3d] to-[#5b1420]"],
+                  ["charcoal", "Charcoal", "from-[#64748b] to-[#334155]"],
+                  ["black", "Black", "from-[#3b3d45] to-[#0f1013]"],
+                ] as [BubbleTheme, string, string][]
+              ).map(([value, label, grad]) => {
+                const active = settings.bubbleTheme === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    aria-label={`${label} bubbles`}
+                    onClick={() => onChange({ bubbleTheme: value })}
+                    className={`flex flex-col items-center gap-1.5 rounded-2xl p-1.5 transition-all active:scale-95 ${active ? "ring-2 ring-[#C0272D] ring-offset-2 ring-offset-white dark:ring-offset-[#0c0d10]" : ""}`}
+                  >
+                    <span className={`block h-9 w-full rounded-xl bg-gradient-to-b ${grad}`} />
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="chat-wallpaper mt-4 space-y-1.5 rounded-2xl border border-slate-900/5 p-3 dark:border-white/5" aria-hidden>
               <div className="flex justify-start">
                 <p className="max-w-[80%] rounded-2xl rounded-tl-none bg-white px-3 py-1.5 text-[0.9375rem] leading-snug text-slate-800 shadow-[0_1px_1.5px_rgba(15,23,42,0.14)] dark:bg-[#26272c] dark:text-slate-100">
@@ -225,7 +282,7 @@ export function SettingsPanel({
                 </p>
               </div>
               <div className="flex justify-end">
-                <p className="max-w-[80%] rounded-2xl rounded-tr-none bg-gradient-to-b from-[#e0555c] to-[#C0272D] px-3 py-1.5 text-[0.9375rem] leading-snug text-white shadow-[0_1px_1.5px_rgba(15,23,42,0.14)]">
+                <p className="max-w-[80%] rounded-2xl rounded-tr-none bubble-out px-3 py-1.5 text-[0.9375rem] leading-snug shadow-[0_1px_1.5px_rgba(15,23,42,0.14)]">
                   Looks great to me.
                 </p>
               </div>
@@ -250,6 +307,56 @@ export function SettingsPanel({
             </div>
           </section>
 
+          <section className={SECTION_CLASS} aria-label="Media">
+            <p className={LABEL_CLASS}>Media</p>
+            <div className="mt-1">
+              <Toggle
+                label="Auto-download media"
+                hint="Load photos, videos and voice notes as soon as a chat opens. Turn off to tap each one to load it and save data."
+                checked={settings.autoDownload}
+                onChange={(autoDownload) => onChange({ autoDownload })}
+              />
+            </div>
+          </section>
+
+          <section className={SECTION_CLASS} aria-label="Notifications">
+            <p className={LABEL_CLASS}>Notifications</p>
+            <p className="mt-3 text-sm font-medium text-slate-800 dark:text-slate-100">Message sound</p>
+            <div className="mt-2">
+              <Segmented
+                label="Message sound"
+                value={settings.messageSound}
+                options={[
+                  { value: "chime", label: "Chime" },
+                  { value: "pop", label: "Pop" },
+                  { value: "bell", label: "Bell" },
+                  { value: "off", label: "Off" },
+                ]}
+                onChange={(messageSound) => {
+                  onChange({ messageSound });
+                  onPreviewSound(messageSound);
+                }}
+              />
+            </div>
+            <div className="mt-2 divide-y divide-slate-900/5 dark:divide-white/5">
+              <Toggle
+                label="Desktop notifications"
+                hint="A pop-up for a new text while this tab is in the background. It only works while the page is open."
+                checked={settings.desktopNotifications}
+                onChange={async (on) => {
+                  if (!on) return onChange({ desktopNotifications: false });
+                  onChange({ desktopNotifications: await onRequestNotifications() });
+                }}
+              />
+              <Toggle
+                label="Show message text"
+                hint="Off shows just &quot;New message&quot; in a notification."
+                checked={settings.notifyPreview}
+                onChange={(notifyPreview) => onChange({ notifyPreview })}
+              />
+            </div>
+          </section>
+
           <section className={SECTION_CLASS} aria-label="Sounds and haptics">
             <p className={LABEL_CLASS}>Sounds and haptics</p>
             <div className="mt-1 divide-y divide-slate-900/5 dark:divide-white/5">
@@ -260,6 +367,97 @@ export function SettingsPanel({
                 checked={settings.haptics}
                 onChange={(haptics) => onChange({ haptics })}
               />
+            </div>
+          </section>
+
+          <section className={SECTION_CLASS} aria-label="Privacy">
+            <p className={LABEL_CLASS}>Privacy</p>
+            <p className="mt-3 text-sm font-medium text-slate-800 dark:text-slate-100">Blocked contacts</p>
+
+            {blocked.length === 0 ? (
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">No one is blocked. Block someone from their chat menu.</p>
+            ) : (
+              <ul className="mt-2 space-y-1.5">
+                {blocked.map((b) => (
+                  <li key={b.number} className="flex items-center justify-between gap-2 rounded-xl bg-slate-900/5 px-3 py-2 dark:bg-white/5">
+                    <span className="min-w-0 truncate text-sm text-slate-800 dark:text-slate-100">{b.name ?? b.number}</span>
+                    <button type="button" onClick={() => onUnblock(b.number)} className="shrink-0 text-xs font-semibold text-[#C0272D] dark:text-[#ff6b72]" aria-label={`Unblock ${b.name ?? b.number}`}>
+                      Unblock
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              Blocking is only in this app: it hides the chat and stops you sending. The person can still text your number, and Twilio still receives it.
+            </p>
+          
+            <p className="mt-4 text-sm font-medium text-slate-800 dark:text-slate-100">App lock</p>
+            {lock ? (
+              <>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">A PIN protects Business Caller on this device. It is checked here, not sent anywhere.</p>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" onClick={onChangePin} className="flex-1 rounded-full bg-slate-900/5 py-2 text-xs font-semibold text-slate-800 active:scale-95 dark:bg-white/10 dark:text-slate-100">
+                    Change PIN
+                  </button>
+                  <button type="button" onClick={onDisableLock} className="flex-1 rounded-full bg-slate-900/5 py-2 text-xs font-semibold text-[#C0272D] active:scale-95 dark:bg-white/10 dark:text-[#ff6b72]">
+                    Turn off
+                  </button>
+                </div>
+                <p className="mt-3 text-sm font-medium text-slate-800 dark:text-slate-100">Lock again after</p>
+                <div className="mt-2">
+                  <Segmented
+                    label="Lock again after"
+                    value={String(lock.autoLockMinutes)}
+                    options={[
+                      { value: "0", label: "Manually" },
+                      { value: "1", label: "1 min" },
+                      { value: "15", label: "15 min" },
+                      { value: "60", label: "1 hour" },
+                    ]}
+                    onChange={(v) => onSetAutoLock(Number(v))}
+                  />
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">Secret code</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">Type it in the Texts search box to reveal locked chats.</span>
+                  </span>
+                  <button type="button" onClick={lock.secret ? onClearSecret : onSetupSecret} className="shrink-0 text-xs font-semibold text-[#C0272D] dark:text-[#ff6b72]">
+                    {lock.secret ? "Remove" : "Set up"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button type="button" onClick={onSetupLock} className="mt-2 w-full rounded-full bg-slate-900/5 py-2.5 text-sm font-semibold text-slate-800 active:scale-[0.98] dark:bg-white/10 dark:text-slate-100">
+                Set up a PIN
+              </button>
+            )}
+</section>
+
+          <section className={SECTION_CLASS} aria-label="Backup">
+            <p className={LABEL_CLASS}>Backup</p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              Your texts already live in Twilio. This saves the rest (pins, stars, favourites, labels, drafts and so on) so you can move them to another phone or computer.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button type="button" onClick={onBackup} className="flex-1 rounded-full bg-slate-900/5 py-2.5 text-sm font-semibold text-slate-800 active:scale-[0.98] dark:bg-white/10 dark:text-slate-100">
+                Back up
+              </button>
+              <label className="flex flex-1 cursor-pointer items-center justify-center rounded-full bg-slate-900/5 py-2.5 text-sm font-semibold text-slate-800 active:scale-[0.98] dark:bg-white/10 dark:text-slate-100">
+                Restore
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  aria-label="Restore a backup file"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (f) onRestore(f);
+                  }}
+                />
+              </label>
             </div>
           </section>
 

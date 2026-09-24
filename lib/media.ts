@@ -71,3 +71,23 @@ export async function getMessageMedia(client: ReturnType<typeof twilio>, message
       url: signedMediaUrl(messageSid, m.sid),
     }));
 }
+
+// Downloads one attachment from Twilio with the server's credentials. Used by
+// the /api/media viewer and by "forward" (which re-uploads it for another chat).
+// TWILIO_API_BASE only exists so the tests can point this at a fake.
+export async function fetchTwilioMedia(messageSid: string, mediaSid: string, maxBytes: number): Promise<{ bytes: Buffer; contentType: string }> {
+  const auth = Buffer.from(`${process.env.TWILIO_API_KEY_SID}:${process.env.TWILIO_API_KEY_SECRET}`).toString("base64");
+  const base = process.env.TWILIO_API_BASE || "https://api.twilio.com";
+  const source = `${base}/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages/${messageSid}/Media/${mediaSid}`;
+  const upstream = await fetch(source, { headers: { Authorization: `Basic ${auth}` }, redirect: "follow" });
+  if (!upstream.ok) throw new MediaFetchError(upstream.status);
+  const bytes = Buffer.from(await upstream.arrayBuffer());
+  if (bytes.byteLength > maxBytes) throw new MediaFetchError(413);
+  return { bytes, contentType: (upstream.headers.get("content-type") ?? "application/octet-stream").split(";")[0].trim() };
+}
+
+export class MediaFetchError extends Error {
+  constructor(public status: number) {
+    super(`Media fetch failed (${status})`);
+  }
+}

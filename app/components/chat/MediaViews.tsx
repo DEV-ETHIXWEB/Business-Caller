@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ThreadMedia } from "@/lib/messageThread";
 import { VoicePlayer } from "./VoicePlayer";
-import { CloseIcon, DownloadIcon } from "../icons";
+import { CloseIcon, DownloadIcon, DownloadCloudIcon, FileIcon, UserCardIcon } from "../icons";
 
 
 
@@ -86,8 +86,29 @@ function ImageMessage({ media }: { media: ThreadMedia }) {
   );
 }
 
-// One attachment inside a message bubble.
-export function MediaView({ media, out }: { media: ThreadMedia; out: boolean }) {
+// One attachment inside a message bubble. With auto-download off it shows a
+// "tap to load" tile first, so nothing is fetched until you ask.
+export function MediaView({ media, out, deferred = false }: { media: ThreadMedia; out: boolean; deferred?: boolean }) {
+  const [loaded, setLoaded] = useState(!deferred || media.url.startsWith("blob:") || media.url.startsWith("data:"));
+
+  if (!loaded && media.kind !== "other") {
+    const label = media.kind === "audio" ? "voice message" : media.kind === "video" ? "video" : "photo";
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setLoaded(true);
+        }}
+        className={`flex h-24 min-w-[11rem] items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold ${out ? "bg-white/15 text-white" : "bg-slate-900/[0.06] text-slate-700 dark:bg-white/10 dark:text-slate-200"}`}
+        aria-label={`Load ${label}`}
+      >
+        <DownloadCloudIcon className="h-5 w-5" />
+        Tap to load {label}
+      </button>
+    );
+  }
+
   if (media.kind === "audio") return <VoicePlayer media={media} out={out} />;
   if (media.kind === "image") return <ImageMessage media={media} />;
   if (media.kind === "video") {
@@ -102,16 +123,21 @@ export function MediaView({ media, out }: { media: ThreadMedia; out: boolean }) 
       />
     );
   }
+  const isCard = /vcard/i.test(media.contentType);
+  const isPdf = /pdf/i.test(media.contentType);
   return (
     <a
       href={media.url}
       target="_blank"
       rel="noopener noreferrer"
       onClick={(e) => e.stopPropagation()}
-      className="flex items-center gap-2 rounded-xl bg-black/10 px-3 py-2 text-sm underline"
+      className={`flex min-w-[11rem] items-center gap-3 rounded-xl px-3 py-2.5 ${out ? "bg-white/15 text-white" : "bg-slate-900/[0.06] text-slate-700 dark:bg-white/10 dark:text-slate-200"}`}
     >
-      <DownloadIcon className="h-4 w-4" />
-      Attachment
+      {isCard ? <UserCardIcon className="h-7 w-7 shrink-0" /> : <FileIcon className="h-7 w-7 shrink-0" />}
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold">{isPdf ? "PDF document" : isCard ? "Contact card" : "Attachment"}</span>
+        <span className="block text-xs opacity-75">Tap to open</span>
+      </span>
     </a>
   );
 }

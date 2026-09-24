@@ -2,8 +2,28 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EmojiPicker } from "./EmojiPicker";
-import { CameraIcon, CloseIcon, ImageIcon, KeyboardIcon, MicIcon, PaperclipIcon, SendIcon, SmileIcon, TrashIcon } from "../icons";
-import { prepareImage, type PreparedImage } from "@/lib/imageResize";
+import {
+  CalendarIcon,
+  CameraIcon,
+  CloseIcon,
+  FileIcon,
+  ImageIcon,
+  KeyboardIcon,
+  MapPinIcon,
+  MicIcon,
+  MusicIcon,
+  PaperclipIcon,
+  PollIcon,
+  SendIcon,
+  SmileIcon,
+  StickerIcon,
+  TrashIcon,
+  UserCardIcon,
+  VideoIcon,
+} from "../icons";
+import { mediaKindLabel, prepareAttachments, type PreparedAttachment } from "@/lib/attachments";
+import { applyFormat, type FormatKind } from "@/lib/formatting";
+import { emojiToSticker } from "@/lib/stickers";
 import {
   MAX_VOICE_SECONDS,
   VoiceError,
@@ -28,7 +48,11 @@ export function Composer({
   onChange,
   onSendText,
   onSendVoice,
-  onSendPhoto,
+  onSendAttachments,
+  onAction,
+  onSticker,
+  username,
+  filesApiRef,
   enterToSend,
   error,
   isDesktop,
@@ -42,7 +66,14 @@ export function Composer({
   onChange: (value: string) => void;
   onSendText: () => void;
   onSendVoice: (recording: VoiceRecording) => void;
-  onSendPhoto: (image: PreparedImage, caption: string) => void;
+  onSendAttachments: (attachments: PreparedAttachment[], caption: string) => void;
+  /** Attach-menu entries that open their own dialog. */
+  onAction: (action: "location" | "contact" | "poll" | "event") => void;
+  /** Sends a sticker (a PNG picture). */
+  onSticker: (dataUrl: string) => void;
+  username: string;
+  /** Lets the chat hand files to the composer (drag and drop). */
+  filesApiRef?: React.MutableRefObject<{ addFiles: (files: File[]) => void } | null>;
   enterToSend: boolean;
   error: string | null;
   isDesktop: boolean;
@@ -67,13 +98,17 @@ export function Composer({
   const [recording, setRecording] = useState<{ seconds: number; levels: number[] } | null>(null);
   const [starting, setStarting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [image, setImage] = useState<PreparedImage | null>(null);
+  const [attachments, setAttachments] = useState<PreparedAttachment[]>([]);
+  const [preparing, setPreparing] = useState(false);
+  const [emojiMode, setEmojiMode] = useState<"emoji" | "stickers">("emoji");
+  const [formatOpen, setFormatOpen] = useState(false);
+  const [hasSelection, setHasSelection] = useState(false);
+  const pickerRef = useRef<HTMLInputElement | null>(null);
   const handleRef = useRef<RecorderHandle | null>(null);
   const finishingRef = useRef(false);
   // After Send the button turns into the mic, so a quick second tap on Send
   // must not start a recording by accident.
   const lastSendRef = useRef(0);
-  const galleryRef = useRef<HTMLInputElement | null>(null);
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const [canRecord, setCanRecord] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -103,6 +138,16 @@ export function Composer({
     };
   }, [emojiOpen, attachOpen]);
 
+  // The formatting button appears while some text in the box is selected.
+  useEffect(() => {
+    function onSelectionChange() {
+      const el = innerRef.current;
+      setHasSelection(!!el && document.activeElement === el && el.selectionStart !== el.selectionEnd);
+    }
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, []);
+
   useEffect(() => {
     const timer = setTimeout(() => setCanRecord(voiceSupported()), 0);
     return () => clearTimeout(timer);
@@ -114,7 +159,7 @@ export function Composer({
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-  }, [value, image, recording]);
+  }, [value, attachments, recording]);
 
   // Replying or editing puts you straight into the box.
   useEffect(() => {
@@ -133,8 +178,9 @@ export function Composer({
       setEmojiOpen(false);
       setAttachOpen(false);
       setRecording(null);
-      setImage(null);
+      setAttachments([]);
       setLocalError(null);
+      setFormatOpen(false);
     }, 0);
     return () => clearTimeout(timer);
   }, [resetKey]);
@@ -211,27 +257,79 @@ export function Composer({
     }
   }
 
-  async function pickFile(file: File | undefined) {
-    setAttachOpen(false);
-    if (!file) return;
-    setLocalError(null);
+  // Prepares picked, pasted or dropped files (shrinks photos, checks types and
+  // sizes) and adds them to the strip above the box.
+  const addFiles = useCallback(
+    async (files: File[]) => {
+      setAttachOpen(false);
+      if (!files.length) return;
+      setLocalError(null);
+      setPreparing(true);
+      try {
+        const { ready, errors } = await prepareAttachments(files, attachmentsRef.current);
+        if (ready.length) {
+          setAttachments((cur) => [...cur, ...ready]);
+          innerRef.current?.focus();
+        }
+        if (errors.length) setLocalError(errors[0]);
+      } finally {
+        setPreparing(false);
+      }
+    },
+    [],
+  );
+  const attachmentsRef = useRef<PreparedAttachment[]>([]);
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+  useEffect(() => {
+    if (filesApiRef) filesApiRef.current = { addFiles: (files) => void addFiles(files) };
+    return () => {
+      if (filesApiRef) filesApiRef.current = null;
+    };
+  }, [filesApiRef, addFiles]);
+
+  // Opens the file chooser for one kind of attachment.
+  function choose(accept: string, multiple = true) {
+    const el = pickerRef.current;
+    if (!el) return;
+    el.accept = accept;
+    el.multiple = multiple;
+    el.click();
+  }
+
+  async function sendSticker(s: { emoji?: string; dataUrl?: string }) {
     try {
-      setImage(await prepareImage(file));
-      innerRef.current?.focus();
+      const dataUrl = s.dataUrl ?? (await emojiToSticker(s.emoji ?? ""));
+      lastSendRef.current = Date.now();
+      onSticker(dataUrl);
+      setEmojiOpen(false);
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : "Could not use that picture.");
+      setLocalError(err instanceof Error ? err.message : "Could not send the sticker.");
     }
   }
 
-  const hasContent = value.trim().length > 0 || !!image;
+  function format(kind: FormatKind) {
+    const el = innerRef.current;
+    if (!el) return;
+    const next = applyFormat(value, el.selectionStart ?? 0, el.selectionEnd ?? 0, kind);
+    onChange(next.text.slice(0, MAX_SMS_LENGTH));
+    setFormatOpen(false);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(next.start, next.end);
+    });
+  }
+
+  const hasContent = value.trim().length > 0 || attachments.length > 0;
   const shownError = localError ?? error;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     lastSendRef.current = Date.now();
-    if (image) {
-      onSendPhoto(image, value);
-      setImage(null);
+    if (attachments.length) {
+      onSendAttachments(attachments, value);
+      setAttachments([]);
       setEmojiOpen(false);
       return;
     }
@@ -288,58 +386,121 @@ export function Composer({
         </div>
       )}
 
-      {image && (
-        <div className="mb-2 flex items-center gap-3 rounded-2xl border border-slate-900/10 bg-white/80 p-2 animate-[slide-fade-in_0.2s_ease-out] dark:border-white/10 dark:bg-white/[0.06]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={image.previewUrl} alt="Picture to send" className="h-16 w-16 rounded-xl object-cover" />
-          <p className="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">Ready to send. Add a caption below if you like.</p>
-          <button type="button" onClick={() => setImage(null)} className={`${PILL_ICON} !h-9 !w-9`} aria-label="Remove picture">
-            <CloseIcon className="h-4 w-4" />
-          </button>
+      {(attachments.length > 0 || preparing) && (
+        <div className="mb-2 rounded-2xl border border-slate-900/10 bg-white/80 p-2 animate-[slide-fade-in_0.2s_ease-out] dark:border-white/10 dark:bg-white/[0.06]" role="group" aria-label="Attachments">
+          <div className="flex gap-2 overflow-x-auto px-1 pb-1 pt-2">
+            {attachments.map((a) => (
+              <div key={a.id} className="relative shrink-0">
+                {a.kind === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={a.previewUrl} alt="Picture to send" className="h-16 w-16 rounded-xl object-cover" />
+                ) : (
+                  <div className="flex h-16 w-16 flex-col items-center justify-center gap-0.5 rounded-xl bg-slate-900/[0.06] text-slate-600 dark:bg-white/10 dark:text-slate-300" aria-label={mediaKindLabel(a)}>
+                    {a.kind === "video" ? <VideoIcon className="h-6 w-6" /> : a.kind === "audio" ? <MusicIcon className="h-6 w-6" /> : <FileIcon className="h-6 w-6" />}
+                    <span className="text-[0.625rem] font-semibold">{mediaKindLabel(a).split(" ")[0]}</span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setAttachments((cur) => cur.filter((x) => x.id !== a.id))}
+                  className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/80 text-white active:scale-90"
+                  aria-label={`Remove ${mediaKindLabel(a)}`}
+                >
+                  <CloseIcon className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+            {preparing && <div className="flex h-16 w-16 shrink-0 animate-pulse items-center justify-center rounded-xl bg-slate-900/[0.06] text-xs text-slate-500 dark:bg-white/10">Preparing</div>}
+          </div>
+          <p className="mt-1 px-1 text-xs text-slate-500 dark:text-slate-400">
+            {attachments.length > 1 ? `${attachments.length} files` : "Ready to send"}. Add a caption below if you like.
+          </p>
         </div>
       )}
 
       {emojiOpen && isDesktop && (
         <div className="absolute bottom-full left-0 z-20 mb-2 w-[22rem] max-w-full animate-[pop-in_0.18s_ease-out]">
-          <EmojiPicker onPick={insertEmoji} height="21rem" />
+          <EmojiPicker key={emojiMode} onPick={insertEmoji} onSticker={(st) => void sendSticker(st)} username={username} initialMode={emojiMode} height="21rem" />
         </div>
       )}
 
       {attachOpen && (
         <div
-          className="absolute bottom-full right-12 z-20 mb-2 w-52 overflow-hidden rounded-2xl border border-white/70 bg-white/95 p-1.5 shadow-[0_20px_50px_-15px_rgba(15,23,42,0.35)] backdrop-blur-2xl animate-[pop-in_0.18s_ease-out] dark:border-white/10 dark:bg-[#17181c]/95"
+          className="absolute bottom-full right-0 z-20 mb-2 w-[min(19rem,100%)] overflow-hidden rounded-3xl border border-white/70 bg-white p-2.5 shadow-[0_20px_50px_-15px_rgba(15,23,42,0.35)] animate-[pop-in_0.18s_ease-out] dark:border-white/10 dark:bg-[#17181c]"
           role="menu"
           aria-label="Attach"
         >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => galleryRef.current?.click()}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors hover:bg-slate-900/5 dark:text-slate-100 dark:hover:bg-white/10"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white">
-              <ImageIcon className="h-4 w-4" />
-            </span>
-            Photo
-          </button>
-          {!isDesktop && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => cameraRef.current?.click()}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors hover:bg-slate-900/5 dark:text-slate-100 dark:hover:bg-white/10"
-            >
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-b from-slate-700 to-slate-950 text-white">
-                <CameraIcon className="h-4 w-4" />
-              </span>
-              Camera
-            </button>
-          )}
+          <div className="grid grid-cols-3 gap-1">
+            {(
+              [
+                { key: "photo", label: "Photo", icon: <ImageIcon className="h-5 w-5" />, tone: "from-[#e0555c] to-[#C0272D]", run: () => choose("image/*") },
+                ...(!isDesktop ? [{ key: "camera", label: "Camera", icon: <CameraIcon className="h-5 w-5" />, tone: "from-slate-700 to-slate-950", run: () => cameraRef.current?.click() }] : []),
+                { key: "video", label: "Video", icon: <VideoIcon className="h-5 w-5" />, tone: "from-[#b0413a] to-[#5c1b1b]", run: () => choose("video/mp4,video/quicktime,video/3gpp,.mp4,.mov,.3gp") },
+                { key: "audio", label: "Audio", icon: <MusicIcon className="h-5 w-5" />, tone: "from-slate-600 to-slate-900", run: () => choose("audio/*,.mp3,.m4a,.wav,.ogg,.amr") },
+                { key: "document", label: "Document", icon: <FileIcon className="h-5 w-5" />, tone: "from-[#C0272D] to-[#7a1620]", run: () => choose("application/pdf,.pdf,text/vcard,.vcf") },
+                { key: "gif", label: "GIF", icon: <ImageIcon className="h-5 w-5" />, tone: "from-slate-800 to-black", run: () => choose("image/gif,.gif") },
+                { key: "location", label: "Location", icon: <MapPinIcon className="h-5 w-5" />, tone: "from-[#e0555c] to-[#C0272D]", run: () => onAction("location") },
+                { key: "contact", label: "Contact", icon: <UserCardIcon className="h-5 w-5" />, tone: "from-slate-700 to-slate-950", run: () => onAction("contact") },
+                { key: "poll", label: "Poll", icon: <PollIcon className="h-5 w-5" />, tone: "from-[#b0413a] to-[#5c1b1b]", run: () => onAction("poll") },
+                { key: "event", label: "Event", icon: <CalendarIcon className="h-5 w-5" />, tone: "from-slate-600 to-slate-900", run: () => onAction("event") },
+                {
+                  key: "sticker",
+                  label: "Sticker",
+                  icon: <StickerIcon className="h-5 w-5" />,
+                  tone: "from-[#C0272D] to-[#7a1620]",
+                  run: () => {
+                    setEmojiMode("stickers");
+                    setEmojiOpen(true);
+                  },
+                },
+              ] as { key: string; label: string; icon: React.ReactNode; tone: string; run: () => void }[]
+            ).map((it) => (
+              <button
+                key={it.key}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setAttachOpen(false);
+                  it.run();
+                }}
+                className="flex flex-col items-center gap-1.5 rounded-2xl px-1 py-2.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-900/5 active:scale-95 dark:text-slate-200 dark:hover:bg-white/10"
+              >
+                <span className={`flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-b text-white shadow-[0_6px_14px_-6px_rgba(15,23,42,0.5)] ${it.tone}`}>{it.icon}</span>
+                {it.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
-      <input ref={galleryRef} type="file" accept="image/*" className="hidden" aria-label="Choose a photo" onChange={(e) => { void pickFile(e.target.files?.[0]); e.target.value = ""; }} />
-      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Take a photo" onChange={(e) => { void pickFile(e.target.files?.[0]); e.target.value = ""; }} />
+      {formatOpen && hasSelection && (
+        <div
+          role="menu"
+          aria-label="Formatting"
+          onMouseDown={(e) => e.preventDefault()}
+          className="absolute bottom-full right-12 z-20 mb-2 flex flex-wrap gap-1 rounded-2xl border border-white/70 bg-white p-1.5 shadow-[0_20px_50px_-15px_rgba(15,23,42,0.35)] animate-[pop-in_0.15s_ease-out] dark:border-white/10 dark:bg-[#17181c]"
+        >
+          {(
+            [
+              ["bold", "Bold", <b key="b">B</b>],
+              ["italic", "Italic", <i key="i">I</i>],
+              ["strike", "Strikethrough", <s key="s">S</s>],
+              ["mono", "Monospace", <code key="m">{"</>"}</code>],
+              ["quote", "Quote", <span key="q">{"\u201c"}</span>],
+              ["bullet", "Bulleted list", <span key="u">{"\u2022"}</span>],
+              ["numbered", "Numbered list", <span key="n">1.</span>],
+              ["code", "Code block", <span key="c">{"{ }"}</span>],
+            ] as [FormatKind, string, React.ReactNode][]
+          ).map(([kind, label, glyph]) => (
+            <button key={kind} type="button" role="menuitem" onClick={() => format(kind)} aria-label={label} title={label} className="flex h-9 w-9 items-center justify-center rounded-xl text-sm text-slate-700 hover:bg-slate-900/5 active:scale-90 dark:text-slate-200 dark:hover:bg-white/10">
+              {glyph}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <input ref={pickerRef} type="file" multiple className="hidden" aria-label="Choose files" onChange={(e) => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Take a photo" onChange={(e) => { void addFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
 
       <form onSubmit={submit} className="flex items-end gap-2">
         <div className="relative flex min-w-0 flex-1 items-end rounded-3xl border border-slate-900/10 bg-white/90 shadow-[inset_0_1px_3px_rgba(15,23,42,0.06)] focus-within:border-[#C0272D]/40 dark:border-white/10 dark:bg-white/10">
@@ -363,7 +524,26 @@ export function Composer({
               if (!isDesktop) setEmojiOpen(false);
               setAttachOpen(false);
             }}
+            onSelect={(e) => setHasSelection(e.currentTarget.selectionStart !== e.currentTarget.selectionEnd)}
+            onPaste={(e) => {
+              // A picture on the clipboard (a screenshot, a copied image) becomes an attachment.
+              const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
+              if (files.length) {
+                e.preventDefault();
+                void addFiles(files);
+              }
+            }}
             onKeyDown={(e) => {
+              // The same formatting shortcuts as WhatsApp Web.
+              if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+                const k = e.key.toLowerCase();
+                const kind: FormatKind | null = k === "b" && !e.shiftKey ? "bold" : k === "i" && !e.shiftKey ? "italic" : k === "x" && e.shiftKey ? "strike" : k === "m" && e.shiftKey ? "mono" : null;
+                if (kind) {
+                  e.preventDefault();
+                  format(kind);
+                  return;
+                }
+              }
               // Enter sends on a computer; on a phone it is a new line, since
               // the on-screen keyboard has no Shift.
               if (
@@ -378,10 +558,23 @@ export function Composer({
             }}
             rows={1}
             maxLength={MAX_SMS_LENGTH}
-            placeholder={image ? "Add a caption" : "Message"}
+            placeholder={attachments.length ? "Add a caption" : "Message"}
             className="block max-h-[120px] min-h-[44px] min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-[10px] text-base leading-snug text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-50 dark:placeholder:text-slate-500"
             aria-label="Message"
           />
+          {hasSelection && (
+            <button
+              type="button"
+              onClick={() => setFormatOpen((o) => !o)}
+              onMouseDown={(e) => e.preventDefault()}
+              className={`${PILL_ICON} !w-9 text-sm font-bold`}
+              aria-label="Formatting"
+              aria-haspopup="menu"
+              aria-expanded={formatOpen}
+            >
+              Aa
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -430,7 +623,7 @@ export function Composer({
 
       {emojiOpen && !isDesktop && (
         <div className="mt-2 animate-[slide-fade-in_0.18s_ease-out]">
-          <EmojiPicker onPick={insertEmoji} height="16rem" />
+          <EmojiPicker key={emojiMode} onPick={insertEmoji} onSticker={(st) => void sendSticker(st)} username={username} initialMode={emojiMode} height="16rem" />
         </div>
       )}
     </div>

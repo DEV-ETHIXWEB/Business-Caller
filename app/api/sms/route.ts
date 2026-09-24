@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 import twilio from "twilio";
-import { put, list, del } from "@vercel/blob";
 import { requireUser } from "@/lib/auth";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
+import { collectAttachments, uploadAttachments } from "@/lib/outgoingMedia";
 
 // Requires Node's crypto module (via requireUser / the twilio SDK), so
 // this must run on the Node.js runtime, not Edge.
@@ -15,47 +14,6 @@ export const maxDuration = 30;
 // A generous cap (~10 SMS segments) - not a hard Twilio limit, just a sane
 // upper bound so a stray paste can't balloon into a huge multi-segment send.
 const MAX_MESSAGE_LENGTH = 1600;
-
-// Attachments (voice notes and photos) go out as MMS. The client shrinks
-// photos and encodes voice notes small; this is the hard backstop. It stays
-// under Vercel's ~4.5MB request limit once base64 is counted.
-const MAX_MEDIA_BYTES = 3 * 1024 * 1024;
-
-const MEDIA_TYPES: Record<string, string> = {
-  "audio/wav": "wav",
-  "audio/x-wav": "wav",
-  "audio/mpeg": "mp3",
-  "audio/mp4": "m4a",
-  "audio/ogg": "ogg",
-  "audio/webm": "webm",
-  "audio/3gpp": "3gp",
-  "audio/amr": "amr",
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/gif": "gif",
-};
-
-// Old uploads are only needed for the moment Twilio fetches them at send
-// time, so they are swept out after a few days.
-const MEDIA_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
-
-function parseMediaDataUrl(dataUrl: string): { mime: string; buffer: Buffer } | null {
-  const match = /^data:([a-zA-Z0-9/+.-]+)(?:;[a-zA-Z0-9=.,_ -]+)*;base64,([a-zA-Z0-9+/=]+)$/.exec(dataUrl);
-  if (!match) return null;
-  const mime = match[1].toLowerCase();
-  if (!(mime in MEDIA_TYPES)) return null;
-  return { mime, buffer: Buffer.from(match[2], "base64") };
-}
-
-async function sweepOldMedia() {
-  try {
-    const { blobs } = await list({ prefix: "outgoing/", limit: 200 });
-    const stale = blobs.filter((b) => Date.now() - b.uploadedAt.getTime() > MEDIA_RETENTION_MS);
-    if (stale.length) await del(stale.map((b) => b.url));
-  } catch (err) {
-    console.warn("[api/sms] Media sweep failed:", err);
-  }
-}
 
 const REQUIRED_ENV_VARS = [
   "TWILIO_ACCOUNT_SID",
@@ -83,8 +41,8 @@ export async function POST(req: Request) {
   }
 
   const message = typeof fields.message === "string" ? fields.message.trim() : "";
-  const mediaField = typeof fields.media === "string" ? fields.media : "";
-  if (!message && !mediaField) {
+  const hasMedia = (Array.isArray(fields.media) ? fields.media.length : fields.media ? 1 : 0) + (Array.isArray(fields.forwardMedia) ? fields.forwardMedia.length : 0) > 0;
+  if (!message && !hasMedia) {
     return NextResponse.json({ error: "Message cannot be empty." }, { status: 400 });
   }
   if (message.length > MAX_MESSAGE_LENGTH) {
@@ -93,35 +51,25 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-
-  let media: { mime: string; buffer: Buffer } | null = null;
-  if (mediaField) {
-    media = parseMediaDataUrl(mediaField);
-    if (!media) {
-      return NextResponse.json({ error: "Unsupported attachment type." }, { status: 400 });
-    }
-    if (media.buffer.byteLength === 0 || media.buffer.byteLength > MAX_MEDIA_BYTES) {
-      return NextResponse.json({ error: "The attachment is too large. Try a shorter recording or a smaller photo." }, { status: 400 });
-    }
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      console.error("[api/sms] Missing required environment variable: BLOB_READ_WRITE_TOKEN");
-      return NextResponse.json({ error: "Server misconfiguration. Please contact the administrator." }, { status: 500 });
-    }
-  }
-
   const client = twilio(process.env.TWILIO_API_KEY_SID!, process.env.TWILIO_API_KEY_SECRET!, {
     accountSid: process.env.TWILIO_ACCOUNT_SID!,
   });
 
   try {
-    // Twilio needs a public link to fetch an attachment from, so it is
-    // parked in Blob storage first (under an unguessable name).
+    // Every attachment is checked before any is uploaded. Twilio needs a
+    // public link to fetch each from, so they are parked in Blob storage first
+    // (under unguessable names).
     let mediaUrl: string[] | undefined;
-    if (media) {
-      const name = `outgoing/${user.username}-${Date.now()}-${randomUUID()}.${MEDIA_TYPES[media.mime]}`;
-      const blob = await put(name, media.buffer, { access: "public", contentType: media.mime });
-      mediaUrl = [blob.url];
-      if (Math.random() < 0.1) void sweepOldMedia();
+    if (hasMedia) {
+      const collected = await collectAttachments(fields, client, user.phoneNumber);
+      if ("error" in collected) return NextResponse.json({ error: collected.error }, { status: collected.status });
+      // Checked after the attachments are validated, so a bad request is told
+      // what is wrong with it before anything about the server setup.
+      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+        console.error("[api/sms] Missing required environment variable: BLOB_READ_WRITE_TOKEN");
+        return NextResponse.json({ error: "Server misconfiguration. Please contact the administrator." }, { status: 500 });
+      }
+      mediaUrl = await uploadAttachments(user.username, collected.items);
     }
 
     // Sends from this logged-in user's own number, not a single shared one.

@@ -224,3 +224,78 @@ html.dark[data-wallpaper="blush"] .chat-wallpaper {
     background-color: rgba(250, 204, 21, 0.25);
   }
 }
+
+/* --- Bubble colours (Settings > Bubble colour) and per-chat wallpaper -------------- */
+
+.bubble-out {
+  background-image: linear-gradient(to bottom, var(--bubble-from, #e0555c), var(--bubble-to, #C0272D));
+  color: #ffffff;
+}
+
+.bubble-tail-out::after {
+  background: var(--bubble-from, #e0555c);
+}
+
+html[data-bubble="wine"] {
+  --bubble-from: #9a2f3d;
+  --bubble-to: #5b1420;
+}
+
+html[data-bubble="charcoal"] {
+  --bubble-from: #64748b;
+  --bubble-to: #334155;
+}
+
+html[data-bubble="black"] {
+  --bubble-from: #3b3d45;
+  --bubble-to: #0f1013;
+}
+
+.chat-wallpaper[data-wp="plain"] {
+  background-image: none;
+}
+
+.chat-wallpaper[data-wp="dots"] {
+  background-image:
+    radial-gradient(circle at 2px 2px, rgba(192, 39, 45, 0.07) 1.2px, transparent 1.4px),
+    radial-gradient(circle at 13px 13px, rgba(192, 39, 45, 0.045) 1px, transparent 1.2px);
+  background-size: 26px 26px;
+}
+
+.dark .chat-wallpaper[data-wp="dots"] {
+  background-image:
+    radial-gradient(circle at 2px 2px, rgba(255, 255, 255, 0.05) 1.2px, transparent 1.4px),
+    radial-gradient(circle at 13px 13px, rgba(224, 85, 92, 0.06) 1px, transparent 1.2px);
+}
+
+.chat-wallpaper[data-wp="blush"] {
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-image: linear-gradient(180deg, rgba(192, 39, 45, 0.07), rgba(245, 239, 238, 0.6) 55%, rgba(192, 39, 45, 0.05));
+}
+
+.dark .chat-wallpaper[data-wp="blush"] {
+  background-image: linear-gradient(180deg, rgba(192, 39, 45, 0.16), rgba(12, 13, 16, 0) 55%, rgba(192, 39, 45, 0.1));
+}
+
+/* The PIN dots shake on a wrong PIN. */
+@keyframes pin-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-9px);
+  }
+  40%,
+  80% {
+    transform: translateX(9px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[pin-shake_0\.4s\] {
+    animation: none;
+  }
+}

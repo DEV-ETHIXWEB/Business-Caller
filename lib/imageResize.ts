@@ -13,7 +13,7 @@ export interface PreparedImage {
   height: number;
 }
 
-export async function prepareImage(file: File): Promise<PreparedImage> {
+export async function prepareImage(file: File, budget = 1.8 * 1024 * 1024): Promise<PreparedImage> {
   if (!file.type.startsWith("image/")) throw new Error("Please choose a picture.");
   if (file.size > 40 * 1024 * 1024) throw new Error("That picture is too large.");
 
@@ -41,11 +41,22 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
 
     // Steps quality down until it fits comfortably under the upload cap.
     let dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-    for (const q of [0.7, 0.58, 0.45]) {
-      if (dataUrl.length * 0.75 <= 1.8 * 1024 * 1024) break;
+    for (const q of [0.7, 0.58, 0.45, 0.35]) {
+      if (dataUrl.length * 0.75 <= budget) break;
       dataUrl = canvas.toDataURL("image/jpeg", q);
     }
-    if (dataUrl.length * 0.75 > 2.6 * 1024 * 1024) throw new Error("That picture is too large to send.");
+    // Still too big at the lowest quality: scale it down and try again.
+    for (const f of [0.75, 0.55, 0.4]) {
+      if (dataUrl.length * 0.75 <= budget) break;
+      canvas.width = Math.max(1, Math.round(width * f));
+      canvas.height = Math.max(1, Math.round(height * f));
+      const c2 = canvas.getContext("2d")!;
+      c2.fillStyle = "#ffffff";
+      c2.fillRect(0, 0, canvas.width, canvas.height);
+      c2.drawImage(img, 0, 0, canvas.width, canvas.height);
+      dataUrl = canvas.toDataURL("image/jpeg", 0.5);
+    }
+    if (dataUrl.length * 0.75 > budget) throw new Error("That picture is too large to send.");
     return { dataUrl, previewUrl: dataUrl, width, height };
   } finally {
     URL.revokeObjectURL(url);
