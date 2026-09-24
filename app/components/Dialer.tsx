@@ -2102,7 +2102,13 @@ export default function Dialer() {
     const plain = outgoing.body.trim();
     if (!plain && !outgoing.media?.length) return;
     if (chatPrefs.isBlocked(activeThread)) {
-      setSmsError("You blocked this number. Unblock it to send a message.");
+      // The composer (where smsError normally shows) is replaced by the
+      // "you blocked this number" banner whenever a chat is blocked, so
+      // nothing would ever render that message. This can still be reached
+      // from things that live outside the composer - reacting to a message,
+      // voting on a poll, answering an event - so a toast is what actually
+      // gets seen.
+      setToast("You blocked this number. Unblock it to send a message.");
       return;
     }
     const quoting = !outgoing.skipReply && replyTo ? replyTo : null;
