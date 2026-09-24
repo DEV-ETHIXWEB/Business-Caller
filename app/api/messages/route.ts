@@ -3,6 +3,7 @@ import twilio from "twilio";
 import { requireUser } from "@/lib/auth";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
 import type { ThreadMessage } from "@/lib/messageThread";
+import { getMessageMedia } from "@/lib/media";
 
 // Requires Node's crypto module (via requireUser / the twilio SDK), so
 // this must run on the Node.js runtime, not Edge.
@@ -53,15 +54,30 @@ export async function POST(req: Request) {
       client.messages.list({ from: withNumber, to: ourNumber, limit: THREAD_PAGE_SIZE }),
     ]);
 
-    const messages: ThreadMessage[] = [...outbound, ...inbound]
-      .map((m) => ({
-        sid: m.sid,
-        direction: (m.direction === "inbound" ? "inbound" : "outbound") as ThreadMessage["direction"],
-        body: m.body,
-        status: m.status,
-        at: (m.dateCreated ?? new Date()).getTime(),
-      }))
-      .sort((a, b) => a.at - b.at);
+    const messages: ThreadMessage[] = await Promise.all(
+      [...outbound, ...inbound].map(async (m) => {
+        const message: ThreadMessage = {
+          sid: m.sid,
+          direction: (m.direction === "inbound" ? "inbound" : "outbound") as ThreadMessage["direction"],
+          body: m.body,
+          status: m.status,
+          at: (m.dateCreated ?? new Date()).getTime(),
+        };
+        // Attachments (voice notes, photos) - only asked about for texts
+        // that actually have one. A failure here just hides the attachment
+        // rather than failing the whole thread.
+        if (Number(m.numMedia) > 0) {
+          try {
+            const media = await getMessageMedia(client, m.sid);
+            if (media.length) message.media = media;
+          } catch (err) {
+            console.warn("[api/messages] Could not load attachments for", m.sid, err);
+          }
+        }
+        return message;
+      }),
+    );
+    messages.sort((a, b) => a.at - b.at);
 
     return NextResponse.json({ messages });
   } catch (err) {

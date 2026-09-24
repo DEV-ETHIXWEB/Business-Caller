@@ -17,8 +17,14 @@ import type { PublicCredentialInfo } from "@/lib/webauthn";
 import { Avatar, PRESET_COUNT } from "./Avatar";
 import { SettingsPanel, type ProfileStatusValue } from "./SettingsPanel";
 import { applySettings, useSettings } from "@/lib/settings";
+import { useChatPrefs } from "@/lib/chatPrefs";
+import { Composer } from "./chat/Composer";
+import { ConversationList } from "./chat/ConversationList";
+import { MediaView } from "./chat/MediaViews";
+import { isEmojiOnly } from "@/lib/emoji";
+import { blobToDataUrl, type VoiceRecording } from "@/lib/voice";
+import type { PreparedImage } from "@/lib/imageResize";
 
-const MAX_SMS_LENGTH = 1600;
 
 // The standard phone-keypad letter mapping (ITU E.161) - shown as small
 // subtext under each digit, the way a real phone dialer looks.
@@ -223,6 +229,33 @@ function CopyIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <rect x="9" y="9" width="12" height="12" rx="2" />
       <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </svg>
+  );
+}
+
+function LockGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="5" y="11" width="14" height="9.5" rx="2.5" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
+function ForwardIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m15 4 6 6-6 6M21 10H9a6 6 0 0 0-6 6v3" />
+    </svg>
+  );
+}
+
+function DotsIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <circle cx="12" cy="5" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="12" cy="19" r="1.8" />
     </svg>
   );
 }
@@ -627,14 +660,6 @@ function guessDeviceLabel(): string {
   return `${browser} on ${platform}`;
 }
 
-function SendIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <path d="M3.4 20.4 21.3 12.7a.8.8 0 0 0 0-1.4L3.4 3.6a.8.8 0 0 0-1.1.9l1.6 6.3 8.6 1.2-8.6 1.2-1.6 6.3a.8.8 0 0 0 1.1.9Z" />
-    </svg>
-  );
-}
-
 function CheckIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -665,9 +690,30 @@ function MessageTicks({ status }: { status: string }) {
 
 // Turns http(s) links inside a message into tappable links - the way
 // WhatsApp does - without ever using innerHTML.
-function linkify(text: string): React.ReactNode[] {
+function linkify(text: string, highlight?: string): React.ReactNode[] {
+  // Wraps the searched words in <mark> (chat search), leaving everything else as text.
+  const mark = (plain: string, keyPrefix: string): React.ReactNode => {
+    const q = highlight?.trim();
+    if (!q) return plain;
+    const lower = plain.toLowerCase();
+    const needle = q.toLowerCase();
+    const out: React.ReactNode[] = [];
+    let at = 0;
+    for (let idx = lower.indexOf(needle); idx !== -1; idx = lower.indexOf(needle, at)) {
+      if (idx > at) out.push(plain.slice(at, idx));
+      out.push(
+        <mark key={`${keyPrefix}-${idx}`} className="rounded bg-yellow-300/80 px-0.5 text-slate-900">
+          {plain.slice(idx, idx + needle.length)}
+        </mark>,
+      );
+      at = idx + needle.length;
+    }
+    if (at < plain.length) out.push(plain.slice(at));
+    return out.length ? out : plain;
+  };
+
   return text.split(/(https?:\/\/[^\s]+)/g).map((part, i) => {
-    if (i % 2 === 0) return part;
+    if (i % 2 === 0) return <span key={i}>{mark(part, String(i))}</span>;
     const trailing = part.match(/[.,!?;:)\]]+$/)?.[0] ?? "";
     const url = trailing ? part.slice(0, -trailing.length) : part;
     return (
@@ -679,7 +725,7 @@ function linkify(text: string): React.ReactNode[] {
           onClick={(e) => e.stopPropagation()}
           className="underline decoration-current/50 underline-offset-2"
         >
-          {url}
+          {mark(url, `u${i}`)}
         </a>
         {trailing}
       </span>
@@ -764,6 +810,8 @@ export default function Dialer() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, updateSettings] = useSettings();
   const settingsRef = useRef(settings);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const chatPrefs = useChatPrefs(signedInUsername);
   const [about, setAbout] = useState("");
   const [aboutDraft, setAboutDraft] = useState<string | null>(null);
   const [status, setStatus] = useState<ProfileStatusValue | undefined>(undefined);
@@ -838,6 +886,12 @@ export default function Dialer() {
 
   const [messageTo, setMessageTo] = useState("");
   const [scrolledUp, setScrolledUp] = useState(false);
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  const [chatQuery, setChatQuery] = useState("");
+  const [chatMatchIdx, setChatMatchIdx] = useState<number | null>(null);
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const [forwardBody, setForwardBody] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [newContactOpen, setNewContactOpen] = useState(false);
   const [messageBody, setMessageBody] = useState("");
@@ -860,6 +914,8 @@ export default function Dialer() {
 
   const stickToBottomRef = useRef(true);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+  // Wide screens get the two-pane, WhatsApp Web layout on the Texts tab.
+  const wideLayout = useMediaQuery("(min-width: 1280px)");
   const vv = useVisualViewport();
   const viewportHeight = vv?.height ?? 0;
 
@@ -872,6 +928,97 @@ export default function Dialer() {
     const el = threadScrollRef.current;
     if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [messageLog, pendingMessages, viewportHeight, activeThread, isDesktop]);
+
+  // Each chat has its own message box: opening one loads its unsent draft (or
+  // an empty box), so text typed in one chat never lands in another.
+  const draftsRef = useRef(chatPrefs.prefs.drafts);
+  useEffect(() => {
+    draftsRef.current = chatPrefs.prefs.drafts;
+  });
+  useEffect(() => {
+    const timer = setTimeout(() => setMessageBody(activeThread ? (draftsRef.current[activeThread] ?? "") : ""), 0);
+    return () => clearTimeout(timer);
+  }, [activeThread]);
+
+  // Opening a chat (or a new message arriving in it while it is open) marks it read.
+  const markReadRef = useRef(chatPrefs.markRead);
+  useEffect(() => {
+    markReadRef.current = chatPrefs.markRead;
+  });
+  useEffect(() => {
+    if (activeThread) markReadRef.current(activeThread);
+  }, [activeThread, messageLog]);
+
+  const unreadCount = conversations.filter((c) => chatPrefs.isUnread(c)).length;
+
+  // "(2) Business Caller" in the tab title, like WhatsApp Web.
+  useEffect(() => {
+    if (!unlocked) return;
+    document.title = unreadCount ? `(${unreadCount}) Business Caller` : "Business Caller";
+    return () => {
+      document.title = "Business Caller";
+    };
+  }, [unlocked, unreadCount]);
+
+  // A soft chime when a new text arrives while the app is open.
+  const newestInboundRef = useRef<number | null>(null);
+  useEffect(() => {
+    const newest = conversations.reduce((max, c) => (c.lastDirection === "inbound" ? Math.max(max, c.lastAt) : max), 0);
+    const previous = newestInboundRef.current;
+    newestInboundRef.current = newest;
+    if (previous === null || newest <= previous || !settingsRef.current.sounds) return;
+    try {
+      const AudioCtx =
+        window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = audioCtxRef.current ?? new AudioCtx();
+      audioCtxRef.current = ctx;
+      if (ctx.state === "suspended") void ctx.resume();
+      const t = ctx.currentTime;
+      [880, 1318.5].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, t + i * 0.11);
+        gain.gain.exponentialRampToValueAtTime(0.14, t + i * 0.11 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.11 + 0.28);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(t + i * 0.11);
+        osc.stop(t + i * 0.11 + 0.3);
+      });
+    } catch {
+      // A blocked or missing audio device never affects anything else.
+    }
+  }, [conversations]);
+
+  // A different chat starts with search, menu and selection closed.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setChatSearchOpen(false);
+      setChatQuery("");
+      setChatMatchIdx(null);
+      setChatMenuOpen(false);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [activeThread]);
+
+  // Escape closes the chat's three dots menu.
+  useEffect(() => {
+    if (!chatMenuOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setChatMenuOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [chatMenuOpen]);
+
+  // A short "Copied" / "Forwarded" confirmation that fades away.
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   // Escape closes the Settings or Profile dialog (desktop keyboards).
   useEffect(() => {
@@ -895,6 +1042,22 @@ export default function Dialer() {
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedMessageSid]);
 
+  // Pictures finish loading after the chat has scrolled down, and the emoji
+  // panel or keyboard resizes the view. Either would push the newest message
+  // out of sight, so while you are at the bottom the chat re-pins itself
+  // whenever its content or size changes.
+  useEffect(() => {
+    const scroller = threadScrollRef.current;
+    const content = threadContentRef.current;
+    if (!scroller || !content || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (stickToBottomRef.current) scroller.scrollTop = scroller.scrollHeight;
+    });
+    observer.observe(content);
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  }, [activeThread, isDesktop, wideLayout]);
+
   // A freshly opened chat always starts at the latest message.
   useEffect(() => {
     stickToBottomRef.current = true;
@@ -913,15 +1076,6 @@ export default function Dialer() {
     stickToBottomRef.current = true;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }
-
-  // The message box grows with what's typed (up to a few lines), like a
-  // messaging app, rather than staying a fixed-height box with its own scroll.
-  useEffect(() => {
-    const el = composerRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-  }, [messageBody, activeThread, isDesktop]);
 
   // Phone/browser Back closes an open chat instead of leaving the app.
   useEffect(() => {
@@ -962,8 +1116,8 @@ export default function Dialer() {
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
   const threadScrollRef = useRef<HTMLDivElement | null>(null);
+  const threadContentRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const chatHistoryPushedRef = useRef(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -1290,6 +1444,27 @@ export default function Dialer() {
     }
   }, []);
 
+  // The inbox refreshes on its own, like a chat app: right away, whenever you
+  // return to it, and every 20 seconds while the page is visible. That is what
+  // makes the unread badge and the new-message sound work.
+  useEffect(() => {
+    if (!unlocked) return;
+    const first = setTimeout(() => fetchConversations(), 0);
+    const interval = setInterval(() => {
+      if (!document.hidden) void fetchConversations();
+    }, 20000);
+    const onVisible = () => {
+      if (!document.hidden) void fetchConversations();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearTimeout(first);
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [unlocked, fetchConversations]);
+
+  // Coming back from an open chat to the list shows the newest previews.
   useEffect(() => {
     if (!unlocked || activeThread) return;
     const timer = setTimeout(() => fetchConversations(), 0);
@@ -1982,15 +2157,20 @@ export default function Dialer() {
   // chat and the box clears immediately, then the real record replaces it
   // once Twilio has it. If the send fails, the text goes back in the box so
   // nothing typed is lost.
-  async function handleSendMessage(e: React.FormEvent) {
+  // One path for everything that goes out: text, a voice note, or a photo.
+  // The message shows at once and the box clears; if the send fails, the text
+  // goes back in the box so nothing typed is lost.
+  async function sendOutgoing(outgoing: {
+    body: string;
+    media?: { dataUrl: string; kind: "audio" | "image"; previewUrl: string; peaks?: number[]; seconds?: number };
+  }) {
     stickToBottomRef.current = true;
-    e.preventDefault();
     playTap();
     setSmsError(null);
 
     if (!activeThread) return;
-    const body = messageBody.trim();
-    if (!body) return;
+    const body = outgoing.body.trim();
+    if (!body && !outgoing.media) return;
 
     const saved = loadSession();
     if (!saved) {
@@ -2000,14 +2180,28 @@ export default function Dialer() {
 
     const thread = activeThread;
     const tempSid = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    setPendingMessages((p) => [...p, { sid: tempSid, direction: "outbound", body, status: "sending", at: Date.now() }]);
-    setMessageBody("");
+    const pending: ThreadMessage = { sid: tempSid, direction: "outbound", body, status: "sending", at: Date.now() };
+    if (outgoing.media) {
+      pending.media = [
+        {
+          sid: `${tempSid}-media`,
+          contentType: outgoing.media.kind === "audio" ? "audio/wav" : "image/jpeg",
+          kind: outgoing.media.kind,
+          url: outgoing.media.previewUrl,
+          peaks: outgoing.media.peaks,
+          seconds: outgoing.media.seconds,
+        },
+      ];
+    }
+    setPendingMessages((p) => [...p, pending]);
+    if (body) setMessageBody("");
+    chatPrefs.setDraft(thread, "");
 
     try {
       const res = await fetch("/api/sms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...saved, to: thread, message: body }),
+        body: JSON.stringify({ ...saved, to: thread, message: body, ...(outgoing.media ? { media: outgoing.media.dataUrl } : {}) }),
       });
       const data = (await res.json().catch(() => ({}))) as { sid?: string; status?: string; error?: string };
       if (!res.ok || !data.sid) {
@@ -2016,12 +2210,52 @@ export default function Dialer() {
       // Pull the thread again immediately rather than waiting for the next
       // poll tick, so the real record replaces the placeholder right away.
       await fetchThread(thread);
+      void fetchConversations();
     } catch (err) {
       setSmsError(err instanceof Error ? err.message : "Failed to send message.");
-      setMessageBody((current) => current || body);
+      if (body) setMessageBody((current) => current || body);
     } finally {
       setPendingMessages((p) => p.filter((m) => m.sid !== tempSid));
+      if (outgoing.media?.previewUrl.startsWith("blob:")) URL.revokeObjectURL(outgoing.media.previewUrl);
     }
+  }
+
+  // Sends a copy of a message's text to another number (the forward button).
+  async function forwardMessage(number: string, body: string) {
+    setForwardBody(null);
+    const saved = loadSession();
+    if (!saved) return;
+    playTap();
+    const label = contacts.find((c) => c.number === number)?.name ?? number;
+    try {
+      const res = await fetch("/api/sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...saved, to: number, message: body }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { sid?: string; error?: string };
+      if (!res.ok || !data.sid) throw new Error(data.error || "Could not forward the message.");
+      setToast(`Forwarded to ${label}`);
+      void fetchConversations();
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : "Could not forward the message.");
+    }
+  }
+
+  function handleSendMessage() {
+    void sendOutgoing({ body: messageBody });
+  }
+
+  async function handleSendVoice(rec: VoiceRecording) {
+    const dataUrl = await blobToDataUrl(rec.wav);
+    await sendOutgoing({
+      body: "",
+      media: { dataUrl, kind: "audio", previewUrl: URL.createObjectURL(rec.wav), peaks: rec.peaks, seconds: rec.seconds },
+    });
+  }
+
+  function handleSendPhoto(image: PreparedImage, caption: string) {
+    void sendOutgoing({ body: caption, media: { dataUrl: image.dataUrl, kind: "image", previewUrl: image.previewUrl } });
   }
 
   // Deleting a message calls Twilio's own delete - it's permanently removed
@@ -2068,6 +2302,7 @@ export default function Dialer() {
     } catch {
       // Best-effort; the refresh below shows whatever Twilio actually has.
     }
+    chatPrefs.forget(number);
     if (activeThread === number) {
       setMessageTo("");
       setActiveThread(null);
@@ -2107,12 +2342,6 @@ export default function Dialer() {
     return name.toLowerCase().includes(q) || entry.with.includes(q);
   });
 
-  const filteredConversations = conversations.filter((c) => {
-    const q = textsSearch.trim().toLowerCase();
-    if (!q) return true;
-    const name = contacts.find((ct) => ct.number === c.number)?.name ?? "";
-    return name.toLowerCase().includes(q) || c.number.includes(q) || c.lastBody.toLowerCase().includes(q);
-  });
 
   const filteredContacts = contacts.filter((c) => {
     const q = contactsSearch.trim().toLowerCase();
@@ -2205,10 +2434,34 @@ export default function Dialer() {
   // A message you sent that the server hasn't listed yet - hidden as soon as
   // the real record shows up, so it never appears twice.
   const visiblePending = pendingMessages.filter(
-    (p) => !messageLog.some((m) => m.direction === "outbound" && m.body === p.body && m.at >= p.at - 10000),
+    (p) =>
+      !messageLog.some(
+        (m) =>
+          m.direction === "outbound" &&
+          m.body === p.body &&
+          !!m.media?.length === !!p.media?.length &&
+          m.at >= p.at - 10000,
+      ),
   );
   const chatMessages = [...messageLog, ...visiblePending];
   const selectedMessage = selectedMessageSid ? chatMessages.find((m) => m.sid === selectedMessageSid) : undefined;
+  const chatMatches = chatQuery.trim()
+    ? chatMessages.filter((m) => m.body.toLowerCase().includes(chatQuery.trim().toLowerCase())).map((m) => m.sid)
+    : [];
+  const currentMatchPosition = chatMatches.length ? Math.min(chatMatchIdx ?? chatMatches.length - 1, chatMatches.length - 1) : 0;
+  const currentMatchSid = chatMatches[currentMatchPosition];
+
+  function stepMatch(direction: 1 | -1) {
+    if (!chatMatches.length) return;
+    setChatMatchIdx((currentMatchPosition + direction + chatMatches.length) % chatMatches.length);
+  }
+
+  // Jump to the message the chat search is on.
+  useEffect(() => {
+    if (!currentMatchSid) return;
+    stickToBottomRef.current = false;
+    document.getElementById(`msg-${currentMatchSid}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [currentMatchSid]);
 
   function closeChat() {
     playTap();
@@ -2232,28 +2485,40 @@ export default function Dialer() {
       style={isDesktop ? undefined : { top: vv?.top ?? 0, height: vv?.height ?? "100dvh" }}
     >
       {selectedMessage ? (
-        <header className="flex shrink-0 items-center gap-1 border-b border-slate-900/5 pb-2 pl-1 pr-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pt-[max(0.5rem,env(safe-area-inset-top))] animate-[fade-in_0.15s_ease-out] dark:border-white/5 lg:pt-0">
-          <button
-            type="button"
-            onClick={() => setSelectedMessageSid(null)}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
-            aria-label="Cancel selection"
-          >
+        <header className="flex shrink-0 items-center gap-1 border-b border-slate-900/5 pb-2 pl-1 pr-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pt-[max(0.5rem,env(safe-area-inset-top))] dark:border-white/5 lg:pt-0 animate-[fade-in_0.15s_ease-out]">
+          <button type="button" onClick={() => setSelectedMessageSid(null)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10" aria-label="Cancel selection">
             <CloseIcon className="h-5 w-5" />
           </button>
           <p className="flex-1 pl-1 text-base font-semibold text-slate-900 dark:text-white">1 selected</p>
-          <button
-            type="button"
-            onClick={() => {
-              playTap();
-              void navigator.clipboard?.writeText(selectedMessage.body).catch(() => {});
-              setSelectedMessageSid(null);
-            }}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
-            aria-label="Copy message"
-          >
-            <CopyIcon className="h-5 w-5" />
-          </button>
+          {selectedMessage.body && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  playTap();
+                  void navigator.clipboard?.writeText(selectedMessage.body).catch(() => {});
+                  setSelectedMessageSid(null);
+                  setToast("Copied");
+                }}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
+                aria-label="Copy message"
+              >
+                <CopyIcon className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  playTap();
+                  setForwardBody(selectedMessage.body);
+                  setSelectedMessageSid(null);
+                }}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
+                aria-label="Forward message"
+              >
+                <ForwardIcon className="h-5 w-5" />
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -2267,12 +2532,50 @@ export default function Dialer() {
             <TrashIcon className="h-5 w-5" />
           </button>
         </header>
+      ) : chatSearchOpen ? (
+        <header className="flex shrink-0 items-center gap-1 border-b border-slate-900/5 pb-2 pl-1 pr-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pt-[max(0.5rem,env(safe-area-inset-top))] dark:border-white/5 lg:pt-0 animate-[fade-in_0.15s_ease-out]">
+          <button
+            type="button"
+            onClick={() => {
+              setChatSearchOpen(false);
+              setChatQuery("");
+              setChatMatchIdx(null);
+            }}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
+            aria-label="Close search"
+          >
+            <ArrowLeftIcon className="h-5 w-5" />
+          </button>
+          <input
+            autoFocus
+            value={chatQuery}
+            onChange={(e) => {
+              setChatQuery(e.target.value);
+              setChatMatchIdx(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") stepMatch(e.shiftKey ? -1 : 1);
+            }}
+            placeholder="Search in this chat"
+            aria-label="Search in this chat"
+            className="min-w-0 flex-1 rounded-full border border-slate-900/10 bg-white/80 px-4 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#C0272D]/40 dark:border-white/10 dark:bg-white/10 dark:text-slate-50"
+          />
+          <span className="min-w-[3.25rem] text-center text-xs tabular-nums text-slate-500 dark:text-slate-400" aria-live="polite">
+            {chatQuery.trim() ? (chatMatches.length ? `${currentMatchPosition + 1} of ${chatMatches.length}` : "0 found") : ""}
+          </span>
+          <button type="button" onClick={() => stepMatch(-1)} disabled={!chatMatches.length} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10 disabled:opacity-30" aria-label="Previous match">
+            <ChevronDownIcon className="h-5 w-5 rotate-180" />
+          </button>
+          <button type="button" onClick={() => stepMatch(1)} disabled={!chatMatches.length} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10 disabled:opacity-30" aria-label="Next match">
+            <ChevronDownIcon className="h-5 w-5" />
+          </button>
+        </header>
       ) : (
       <header className="flex shrink-0 items-center gap-1.5 border-b border-slate-900/5 pb-2 pl-1 pr-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pt-[max(0.5rem,env(safe-area-inset-top))] dark:border-white/5 lg:pt-0">
         <button
           type="button"
           onClick={closeChat}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10 xl:hidden"
           aria-label="Back to conversations"
         >
           <ArrowLeftIcon className="h-5 w-5" />
@@ -2286,6 +2589,9 @@ export default function Dialer() {
             {messagesLoading ? "syncing…" : threadContactName ? activeThread : "Text message"}
           </p>
         </div>
+        <button type="button" onClick={() => setChatSearchOpen(true)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10" aria-label="Search in chat">
+          <SearchIcon className="h-5 w-5" />
+        </button>
         <button
           type="button"
           onClick={() => dialNumber(activeThread)}
@@ -2294,6 +2600,51 @@ export default function Dialer() {
         >
           <PhoneIcon className="h-5 w-5" />
         </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setChatMenuOpen((open) => !open)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
+            aria-label="More options"
+            aria-haspopup="menu"
+            aria-expanded={chatMenuOpen}
+          >
+            <DotsIcon className="h-5 w-5" />
+          </button>
+          {chatMenuOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setChatMenuOpen(false)} />
+              <div
+                role="menu"
+                aria-label="Chat options"
+                className="absolute right-0 top-full z-20 mt-1 w-52 overflow-hidden rounded-2xl border border-white/70 bg-white/95 p-1.5 shadow-[0_20px_50px_-15px_rgba(15,23,42,0.4)] backdrop-blur-2xl animate-[pop-in_0.15s_ease-out] dark:border-white/10 dark:bg-[#17181c]/95"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setChatMenuOpen(false);
+                    chatPrefs.togglePin(activeThread);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-slate-900/5 dark:text-slate-100 dark:hover:bg-white/10"
+                >
+                  {chatPrefs.isPinned(activeThread) ? "Unpin chat" : "Pin chat"}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setChatMenuOpen(false);
+                    void handleDeleteConversation(activeThread);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[#C0272D] hover:bg-slate-900/5 dark:hover:bg-white/10"
+                >
+                  Delete chat
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </header>
       )}
 
@@ -2304,6 +2655,7 @@ export default function Dialer() {
         onScroll={handleThreadScroll}
         className="chat-wallpaper min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 md:max-lg:px-[max(0.75rem,calc((100%-44rem)/2))] lg:my-2 lg:rounded-2xl lg:border lg:border-white/40 lg:bg-white/20 dark:lg:border-white/5 dark:lg:bg-black/10"
       >
+        <div ref={threadContentRef}>
         {chatMessages.length === 0 && !messagesLoading && (
           <div className="mt-8 flex justify-center px-4">
             <p className="rounded-2xl bg-white/90 px-4 py-2 text-center text-xs leading-relaxed text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.12)] dark:bg-white/10 dark:text-slate-300">
@@ -2319,7 +2671,7 @@ export default function Dialer() {
           const isPending = m.sid.startsWith("pending-");
           const selected = selectedMessageSid === m.sid;
           return (
-            <div key={m.sid}>
+            <div key={m.sid} id={`msg-${m.sid}`}>
               {showDay && (
                 <div className="my-3 flex justify-center">
                   <span className="rounded-full bg-slate-900/5 px-3 py-1 text-[0.6875rem] font-medium text-slate-500 dark:bg-white/10 dark:text-slate-300">
@@ -2329,34 +2681,72 @@ export default function Dialer() {
               )}
               <div className={`flex ${out ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2.5"}`}>
                 <div className={`flex min-w-0 max-w-[82%] flex-col lg:max-w-[70%] ${out ? "items-end" : "items-start"}`}>
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!isPending) setSelectedMessageSid(selected ? null : m.sid);
-                    }}
-                    className={`relative px-3 py-1.5 text-[0.9375rem] leading-snug shadow-[0_1px_1.5px_rgba(15,23,42,0.14)] ${
-                      out
-                        ? `rounded-2xl bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white ${grouped ? "" : "bubble-tail-out rounded-tr-none"}`
-                        : `rounded-2xl bg-white text-slate-800 dark:bg-[#26272c] dark:text-slate-100 ${grouped ? "" : "bubble-tail-in rounded-tl-none"}`
-                    } ${selected ? "outline outline-2 outline-offset-2 outline-[#C0272D]/50" : ""}`}
-                  >
-                    {/* The time floats to the end of the last line (WhatsApp
-                        style), so short messages stay one compact bubble. */}
-                    <p className="flow-root whitespace-pre-wrap [overflow-wrap:anywhere]">
-                      {linkify(m.body)}
+                  {(() => {
+                    const hasMedia = !!m.media?.length;
+                    const emojiOnly = !hasMedia && isEmojiOnly(m.body);
+                    const time = (
                       <span
-                        className={`float-right ml-2.5 mt-[7px] inline-flex select-none items-center gap-1 text-[0.625rem] leading-none ${out ? "text-white/75" : "text-slate-400"}`}
+                        className={`inline-flex select-none items-center gap-1 text-[0.625rem] leading-none ${
+                          emojiOnly ? "text-slate-400 dark:text-slate-500" : out ? "text-white/75" : "text-slate-400"
+                        }`}
                       >
                         <span>{new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                         {out && <MessageTicks status={m.status} />}
                       </span>
-                    </p>
-                  </div>
+                    );
+                    return (
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!isPending) setSelectedMessageSid(selected ? null : m.sid);
+                        }}
+                        className={`relative text-[0.9375rem] leading-snug ${
+                          emojiOnly
+                            ? "px-1 py-0.5"
+                            : `${hasMedia ? "p-1" : "px-3 py-1.5"} shadow-[0_1px_1.5px_rgba(15,23,42,0.14)] ${
+                                out
+                                  ? `rounded-2xl bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white ${grouped ? "" : "bubble-tail-out rounded-tr-none"}`
+                                  : `rounded-2xl bg-white text-slate-800 dark:bg-[#26272c] dark:text-slate-100 ${grouped ? "" : "bubble-tail-in rounded-tl-none"}`
+                              }`
+                        } ${selected ? "rounded-2xl outline outline-2 outline-offset-2 outline-[#C0272D]/50" : ""}`}
+                      >
+                        {hasMedia && (
+                          <div className="flex flex-col gap-1">
+                            {m.media!.map((media) => (
+                              <div key={media.sid} className={media.kind === "audio" ? "px-2 pt-1.5" : ""}>
+                                <MediaView media={media} out={out} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {emojiOnly ? (
+                          <div className={`flex flex-col ${out ? "items-end" : "items-start"} gap-1`}>
+                            <p className="text-[2.75rem] leading-none">{m.body.trim()}</p>
+                            {time}
+                          </div>
+                        ) : hasMedia ? (
+                          <div className={`${m.body ? "px-2 pb-1 pt-1.5" : "px-2 pb-1 pt-0.5"}`}>
+                            {m.body && <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{linkify(m.body, chatSearchOpen ? chatQuery : undefined)}</p>}
+                            <div className="mt-0.5 flex justify-end">{time}</div>
+                          </div>
+                        ) : (
+                          /* The time floats to the end of the last line
+                             (WhatsApp style), so short messages stay one
+                             compact bubble. */
+                          <p className="flow-root whitespace-pre-wrap [overflow-wrap:anywhere]">
+                            {linkify(m.body, chatSearchOpen ? chatQuery : undefined)}
+                            <span className="float-right ml-2.5 mt-[7px]">{time}</span>
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
           );
         })}
+        </div>
       </div>
       {scrolledUp && (
         <button
@@ -2371,49 +2761,22 @@ export default function Dialer() {
       </div>
 
       <div className="shrink-0 border-t border-slate-900/5 px-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 dark:border-white/5 lg:border-0 lg:px-0 lg:pb-0">
-        {smsError && <p className={`px-2 pb-1.5 ${COMPACT_ERROR_CLASS}`}>{smsError}</p>}
-        <form onSubmit={handleSendMessage} className="flex items-end gap-2">
-          <div className="relative min-w-0 flex-1">
-            <textarea
-              ref={composerRef}
-              value={messageBody}
-              onChange={(e) => setMessageBody(e.target.value)}
-              onKeyDown={(e) => {
-                // Enter sends on a computer; on a phone it's a new line, since
-                // the on-screen keyboard has no Shift.
-                if (
-                  e.key === "Enter" &&
-                  !e.shiftKey &&
-                  settings.enterToSend &&
-                  window.matchMedia("(hover: hover) and (pointer: fine)").matches
-                ) {
-                  e.preventDefault();
-                  e.currentTarget.form?.requestSubmit();
-                }
-              }}
-              rows={1}
-              maxLength={MAX_SMS_LENGTH}
-              placeholder="Message"
-              className="block max-h-[120px] min-h-[44px] w-full resize-none rounded-3xl border border-slate-900/10 bg-white/90 px-4 py-[10px] text-base leading-snug text-slate-900 shadow-[inset_0_1px_3px_rgba(15,23,42,0.06)] outline-none placeholder:text-slate-400 focus:border-[#C0272D]/40 dark:border-white/10 dark:bg-white/10 dark:text-slate-50 dark:placeholder:text-slate-500"
-              aria-label="Message"
-            />
-            {messageBody.length > MAX_SMS_LENGTH - 200 && (
-              <span className="pointer-events-none absolute -top-4 right-3 text-[0.625rem] text-slate-400">
-                {messageBody.length}/{MAX_SMS_LENGTH}
-              </span>
-            )}
-          </div>
-          <button
-            type="submit"
-            // Keeps the keyboard open after sending, so you can keep typing.
-            onPointerDown={(e) => e.preventDefault()}
-            disabled={!messageBody.trim()}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[0_8px_18px_-8px_rgba(192,39,45,0.7)] transition-all active:scale-90 disabled:opacity-40 disabled:shadow-none"
-            aria-label="Send"
-          >
-            <SendIcon className="h-5 w-5" />
-          </button>
-        </form>
+        <Composer
+          value={messageBody}
+          onChange={(v) => {
+            setMessageBody(v);
+            if (activeThread) chatPrefs.setDraft(activeThread, v);
+          }}
+          onSendText={handleSendMessage}
+          onSendVoice={(rec) => void handleSendVoice(rec)}
+          onSendPhoto={handleSendPhoto}
+          enterToSend={settings.enterToSend}
+          error={smsError}
+          isDesktop={isDesktop}
+          resetKey={activeThread ?? ""}
+          busy={false}
+          textareaRef={composerRef}
+        />
       </div>
     </div>
   ) : null;
@@ -2470,58 +2833,54 @@ export default function Dialer() {
               aria-label="Search texts"
             />
           </div>
-          <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pb-24 lg:pb-4">
-            {conversationsLoading && conversations.length === 0 && (
-              <p className="p-4 text-center text-sm text-slate-400 dark:text-slate-500">Loading…</p>
-            )}
-            {!conversationsLoading && filteredConversations.length === 0 && (
-              <p className="p-4 text-center text-sm text-slate-400 dark:text-slate-500">
-                {conversations.length === 0 ? "No conversations yet." : "No conversations match your search."}
-              </p>
-            )}
-            {filteredConversations.map((c, i) => {
-              const name = contacts.find((ct) => ct.number === c.number)?.name;
-              return (
-                <div key={c.number} className={`${LIST_ROW_CLASS} ${ROW_ENTRANCE_CLASS}`} style={staggerStyle(i)}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      playTap();
-                      setMessageTo(c.number);
-                      setActiveThread(c.number);
-                    }}
-                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                  >
-                    <Avatar label={name ?? c.number} size="lg" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[0.9375rem] font-semibold text-slate-800 dark:text-slate-100">{name ?? c.number}</p>
-                      <p className="mt-0.5 truncate text-[0.8125rem] text-slate-500 dark:text-slate-400">
-                        {c.lastDirection === "outbound" && <span className="text-slate-400 dark:text-slate-500">You: </span>}
-                        {c.lastBody}
-                      </p>
-                    </div>
-                  </button>
-                  <div className="flex shrink-0 flex-col items-end gap-1.5 self-stretch py-0.5">
-                    <span className="text-[0.6875rem] text-slate-400 dark:text-slate-500">{relativeDay(c.lastAt)}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteConversation(c.number)}
-                      className="flex h-6 w-6 items-center justify-center rounded-full text-slate-300 transition-all hover:bg-slate-900/5 hover:text-[#C0272D] active:scale-90 dark:text-slate-600 dark:hover:bg-white/10"
-                      aria-label={`Delete conversation with ${name ?? c.number}`}
-                    >
-                      <TrashIcon className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <ConversationList
+            conversations={conversations}
+            nameFor={(number) => contacts.find((ct) => ct.number === number)?.name}
+            loading={conversationsLoading}
+            search={textsSearch}
+            activeNumber={activeThread}
+            prefs={chatPrefs}
+            isDesktop={isDesktop}
+            onOpen={(number) => {
+              playTap();
+              setMessageTo(number);
+              setActiveThread(number);
+            }}
+            onDelete={handleDeleteConversation}
+          />
     </div>
   );
 
   // Desktop shows the chat inside this panel; on a phone the chat is a
   // separate full-screen layer (see chatView above), so this stays the list.
-  const textsTabBody = activeThread && isDesktop ? chatView : textsListBody;
+  // On a wide screen the Texts tab is two panes, like WhatsApp Web: the chat
+  // list stays on the left and the open chat (or a welcome) fills the right.
+  const chatEmptyPane = (
+    <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+      <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[0_20px_40px_-14px_rgba(192,39,45,0.6)]">
+        <MessageIcon className="h-11 w-11" />
+      </div>
+      <h2 className="text-2xl font-semibold tracking-wide text-slate-900 dark:text-white">Business Caller for Web</h2>
+      <p className="mt-2 max-w-sm text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+        Send and receive texts, photos and voice notes from your business number, right from your computer. Pick a chat on the left to start.
+      </p>
+      <p className="mt-10 flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+        <LockGlyph className="h-3.5 w-3.5" />
+        Messages are sent as SMS or MMS from {callerId}
+      </p>
+    </div>
+  );
+
+  const textsTabBody = wideLayout ? (
+    <div className="flex h-full min-h-0">
+      <div className="flex w-[22rem] shrink-0 flex-col border-r border-slate-900/5 pr-5 dark:border-white/5">{textsListBody}</div>
+      <div className="min-w-0 flex-1 pl-5">{activeThread ? chatView : chatEmptyPane}</div>
+    </div>
+  ) : activeThread && isDesktop ? (
+    chatView
+  ) : (
+    textsListBody
+  );
 
   const contactsTabBody = (
     <div className="flex h-full min-h-0 flex-col">
@@ -3056,7 +3415,20 @@ export default function Dialer() {
           }}
           className={activeTab === "texts" ? NAV_BUTTON_ACTIVE_CLASS : NAV_BUTTON_INACTIVE_CLASS}
         >
-          <MessageIcon className="h-5 w-5" />
+          <span className="relative">
+            <MessageIcon className="h-5 w-5" />
+            {unreadCount > 0 && (
+              <span
+                className={`absolute -right-2.5 -top-2 flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[0.625rem] font-bold leading-none ring-2 ${
+                  activeTab === "texts" ? "bg-white text-[#C0272D] ring-[#C0272D]" : "bg-[#C0272D] text-white ring-white dark:ring-[#0c0d10]"
+                }`}
+                role="status"
+                aria-label={`${unreadCount} unread`}
+              >
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </span>
           Texts
         </button>
         <button
@@ -3177,7 +3549,20 @@ export default function Dialer() {
           }}
           className={activeTab === "texts" ? NAV_BUTTON_ACTIVE_CLASS : NAV_BUTTON_INACTIVE_CLASS}
         >
-          <MessageIcon className="h-5 w-5" />
+          <span className="relative">
+            <MessageIcon className="h-5 w-5" />
+            {unreadCount > 0 && (
+              <span
+                className={`absolute -right-2.5 -top-2 flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[0.625rem] font-bold leading-none ring-2 ${
+                  activeTab === "texts" ? "bg-white text-[#C0272D] ring-[#C0272D]" : "bg-[#C0272D] text-white ring-white dark:ring-[#0c0d10]"
+                }`}
+                role="status"
+                aria-label={`${unreadCount} unread`}
+              >
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </span>
           Texts
         </button>
         <button
@@ -3210,6 +3595,64 @@ export default function Dialer() {
         </div>
       )}
 
+
+      {forwardBody !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-[fade-in_0.15s_ease-out] lg:items-center lg:p-6"
+          onClick={() => setForwardBody(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Forward message"
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[80dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-white/70 bg-white/95 shadow-[0_-20px_50px_-15px_rgba(15,23,42,0.4)] backdrop-blur-2xl animate-[slide-fade-in_0.2s_ease-out] dark:border-white/10 dark:bg-[#17181c]/95 lg:max-w-sm lg:rounded-3xl"
+          >
+            <div className="flex items-center justify-between px-4 pb-2 pt-4">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Forward to</h2>
+              <button type="button" onClick={() => setForwardBody(null)} className={MINI_ICON_BUTTON_CLASS} aria-label="Close">
+                <CloseIcon className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <p className="mx-4 mb-2 truncate rounded-xl bg-slate-900/5 px-3 py-2 text-xs text-slate-500 dark:bg-white/5 dark:text-slate-400">{forwardBody}</p>
+            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              {Array.from(new Set([...conversations.map((c) => c.number), ...contacts.map((c) => c.number)]))
+                .filter((n) => n !== activeThread)
+                .map((number) => {
+                  const name = contacts.find((c) => c.number === number)?.name;
+                  return (
+                    <button
+                      key={number}
+                      type="button"
+                      onClick={() => void forwardMessage(number, forwardBody)}
+                      className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-slate-900/5 dark:hover:bg-white/10"
+                    >
+                      <Avatar label={name ?? number} size="md" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-[0.9375rem] font-semibold text-slate-800 dark:text-slate-100">{name ?? number}</span>
+                        {name && <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{number}</span>}
+                      </span>
+                    </button>
+                  );
+                })}
+              {conversations.length + contacts.length === 0 && (
+                <p className="p-6 text-center text-sm text-slate-400">No one to forward to yet.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div
+          role="status"
+          className="pointer-events-none fixed inset-x-0 bottom-24 z-[70] flex justify-center px-4 animate-[slide-fade-in_0.2s_ease-out] lg:bottom-8"
+        >
+          <p className="rounded-full bg-slate-900/90 px-4 py-2 text-sm font-medium text-white shadow-[0_10px_30px_-10px_rgba(0,0,0,0.6)] dark:bg-white/90 dark:text-slate-900">
+            {toast}
+          </p>
+        </div>
+      )}
 
       {settingsOpen && (
         <SettingsPanel

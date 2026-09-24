@@ -243,6 +243,40 @@ compliance step, not something this app's code can work around.
   unbroken text wrap inside the bubble instead of spilling out. On tablets
   the chat is a centred column; Escape clears a selection on desktop. In the Texts list, "New
   message" opens the number box.
+- **WhatsApp-style texting**: the Texts tab is built like a chat app on both
+  screen sizes. On a phone it is a full-screen chat with a bottom tab bar; on
+  a wide screen (1280px and up) it is two panes like WhatsApp Web, with the
+  chat list on the left, the open chat on the right and a welcome screen when
+  none is open.
+  - *Emoji*: an emoji panel (search, eight categories, recently used). On a
+    phone it takes the keyboard's place; on a computer it floats above the box.
+    A message made of only 1 to 3 emoji shows large, without a bubble.
+  - *Voice notes*: tap the mic (it replaces Send when the box is empty), talk,
+    then tap Send, or the bin to throw it away. Up to 40 seconds, with a live
+    timer and level bars. Notes play in the chat with a waveform, a seek bar,
+    1x / 1.5x / 2x speed, and only one plays at a time.
+  - *Photos*: the paperclip attaches a photo (the camera too, on a phone),
+    shrunk before sending, with an optional caption. Tap a photo to view it
+    full screen.
+  - *Chat list*: unread dots and a count on the Texts tab and in the browser
+    tab title, pin chats to the top, mark as unread, unsent drafts ("Draft:"),
+    All / Unread / Pinned filters, and "Voice message" / "Photo" previews.
+    Long press a chat on a phone, or right click or use the dots on a
+    computer. The list refreshes itself every 20 seconds and plays a soft
+    chime for a new text (see Settings to turn sounds off).
+  - *In a chat*: search inside the chat (highlighted, next/previous), forward
+    a message's text to someone else, copy, delete, and pin from the menu.
+  - Unread, pins and drafts are remembered per person on each device (Twilio
+    has no "read" flag to ask). Chats that were already there the first time a
+    device is used do not show as unread.
+  - *How voice notes and photos travel*: as MMS from your Twilio number, so
+    they need an MMS-capable US or Canadian number (all three numbers here
+    are) and the recipient's carrier to accept picture messages. The file is
+    parked in Vercel Blob (`BLOB_READ_WRITE_TOKEN`, already used for profile
+    photos) under an unguessable name so Twilio can fetch it, and files older
+    than 3 days are swept out. Voice notes are sent as small mono WAV files
+    because those play on every phone. Received attachments are served through
+    `/api/media`, which only accepts signed, expiring links.
 - **Messages/SMS (Texts tab)**: an inbox-style list of every past
   conversation (pulled from Twilio's real message history, most recent
   first), tap one to open the full thread with a back button to return to
@@ -261,9 +295,10 @@ compliance step, not something this app's code can work around.
 - Sending SMS requires **SMS capability enabled** (and, for a new number,
   A2P 10DLC registration completed) on that person's own number in the
   Twilio Console, if it's off or unregistered, sends fail with a clear
-  error. No extra env vars needed; `/api/sms` and `/api/messages` reuse the
-  same credentials as everything else, just scoped to whichever number the
-  signed-in user owns.
+  error. No extra env vars are needed for text; `/api/sms` and
+  `/api/messages` reuse the same credentials as everything else, just scoped
+  to whichever number the signed-in user owns. Sending a voice note or photo
+  also needs `BLOB_READ_WRITE_TOKEN` (the same one used for profile photos).
 - **App icon**: a custom icon (a phone glyph on the same near-black/crimson
   brand gradient) is wired up for the browser tab, iOS/Android "Add to
   Home Screen," and Chrome's install prompt. Installed from the home
@@ -334,8 +369,9 @@ app/
   components/Avatar.tsx    Circular avatar - shows an uploaded photo, or a colored initials fallback
   api/token/route.ts       Mints Twilio Access Tokens for the signed-in user (server-side, gated by APP_USERS); also returns their avatarUrl
   api/voice/route.ts       TwiML webhook Twilio calls to place the outbound leg; resolves caller ID from the caller's identity
-  api/sms/route.ts         Sends outbound SMS via the Twilio REST API, from the signed-in user's own number
+  api/sms/route.ts         Sends outbound SMS or MMS (voice note, photo) via the Twilio REST API, from the signed-in user's own number
   api/messages/route.ts    Reads/deletes one conversation's message history live from Twilio, scoped to the signed-in user's number
+  api/media/route.ts       Serves one MMS attachment (voice note, photo) from Twilio behind a signed, expiring link
   api/conversations/route.ts  Reads the signed-in user's conversation list, and deletes a whole conversation
   api/calls/route.ts       Reads/deletes the signed-in user's call history live from Twilio's own Call records
   api/calls/hold/route.ts     Puts the other party (or a specific participant) on hold, or takes them off it

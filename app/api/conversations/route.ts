@@ -3,6 +3,7 @@ import twilio from "twilio";
 import { requireUser } from "@/lib/auth";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
 import type { ConversationSummary } from "@/lib/messageThread";
+import { getMessageMedia } from "@/lib/media";
 
 // Requires Node's crypto module (via requireUser / the twilio SDK), so
 // this must run on the Node.js runtime, not Edge.
@@ -18,7 +19,9 @@ const REQUIRED_ENV_VARS = ["TWILIO_ACCOUNT_SID", "TWILIO_API_KEY_SID", "TWILIO_A
 export async function POST(req: Request) {
   const auth = await requireUser(req, {
     rateLimitKey: "conversations",
-    limit: 30,
+    // The inbox refreshes itself every 20 seconds, and everyone at an office
+    // shares one address.
+    limit: 120,
     windowMs: IP_RATE_WINDOW_MS,
     requiredEnvVars: REQUIRED_ENV_VARS,
   });
@@ -37,6 +40,7 @@ export async function POST(req: Request) {
     ]);
 
     const byNumber = new Map<string, ConversationSummary>();
+    const latestSid = new Map<string, { sid: string; hasMedia: boolean }>();
     for (const m of [...sent, ...received]) {
       const isInbound = m.direction === "inbound";
       const counterpart = isInbound ? m.from : m.to;
@@ -51,8 +55,26 @@ export async function POST(req: Request) {
           lastDirection: isInbound ? "inbound" : "outbound",
           lastAt: at,
         });
+        latestSid.set(counterpart, { sid: m.sid, hasMedia: Number(m.numMedia) > 0 });
       }
     }
+
+    // For a latest message that is an attachment, learn what kind, so the
+    // list can show "Voice message" or "Photo" instead of an empty preview.
+    await Promise.all(
+      Array.from(latestSid.entries())
+        .filter(([, v]) => v.hasMedia)
+        .slice(0, 30)
+        .map(async ([number, v]) => {
+          try {
+            const media = await getMessageMedia(client, v.sid);
+            const summary = byNumber.get(number);
+            if (summary && media[0]) summary.lastKind = media[0].kind;
+          } catch {
+            // Falls back to the plain preview.
+          }
+        }),
+    );
 
     const conversations = Array.from(byNumber.values()).sort((a, b) => b.lastAt - a.lastAt);
     return NextResponse.json({ conversations });
