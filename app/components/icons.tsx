@@ -331,3 +331,199 @@ export const MailIcon = ({ className }: IconProps) => (
     <path d="m3.5 7 8.5 6 8.5-6" />
   </Outline>
 );
+
+// --- Message and chat actions -------------------------------------------------------
+
+export const StarIcon = ({ className, filled = false }: IconProps & { filled?: boolean }) => (
+  <svg viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth={WEIGHT} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" className={className}>
+    <path d="m12 3.2 2.7 5.5 6 .9-4.4 4.2 1 6-5.3-2.8-5.3 2.8 1-6L3.3 9.6l6-.9Z" />
+  </svg>
+);
+
+export const ReplyIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <path d="m9 14-5-5 5-5" />
+    <path d="M4 9h10a6 6 0 0 1 6 6v3" />
+  </Outline>
+);
+
+export const InfoIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <circle cx="12" cy="12" r="9.2" />
+    <path d="M12 11v5.5M12 7.6h.01" strokeWidth="2.2" />
+  </Outline>
+);
+
+export const PencilIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7.5 18.5 3 20l1.5-4.5Z" />
+    <path d="m14.5 5.5 3 3" />
+  </Outline>
+);
+
+export const ArchiveIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <rect x="3" y="4" width="18" height="4.5" rx="1.2" />
+    <path d="M5 8.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19V8.5M10 12.5h4" />
+  </Outline>
+);
+
+export const BellIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9Z" />
+    <path d="M10 19.5a2.2 2.2 0 0 0 4 0" />
+  </Outline>
+);
+
+export const BellOffIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <path d="M8.5 4.7A6 6 0 0 1 18 9c0 2.6.4 4.4.9 5.6M6 9c0 6-2.5 7.5-2.5 7.5H14" />
+    <path d="M10 19.5a2.2 2.2 0 0 0 4 0M3 3l18 18" />
+  </Outline>
+);
+
+export const BanIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <circle cx="12" cy="12" r="9.2" />
+    <path d="m5.7 5.7 12.6 12.6" />
+  </Outline>
+);
+
+export const TagIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <path d="M3 12.3V4.5A1.5 1.5 0 0 1 4.5 3h7.8a1.5 1.5 0 0 1 1.06.44l7.2 7.2a1.5 1.5 0 0 1 0 2.12l-7.8 7.8a1.5 1.5 0 0 1-2.12 0l-7.2-7.2A1.5 1.5 0 0 1 3 12.3Z" />
+    <circle cx="8" cy="8" r="1.3" />
+  </Outline>
+);
+
+export const TimerIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <circle cx="12" cy="13.5" r="7.5" />
+    <path d="M12 9.5v4l2.5 1.5M9.5 2.5h5" />
+  </Outline>
+);
+
+export const CheckSquareIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <rect x="3.5" y="3.5" width="17" height="17" rx="3.5" />
+    <path d="m8 12.3 2.8 2.8L16.5 9" />
+  </Outline>
+);
+
+export const MapPinIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <path d="M12 21.5s7-6.1 7-11.5a7 7 0 0 0-14 0c0 5.4 7 11.5 7 11.5Z" />
+    <circle cx="12" cy="10" r="2.6" />
+  </Outline>
+);
+
+export const PollIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+  </Outline>
+);
+
+export const CalendarIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+    <path d="M3.5 10h17M8 3v4M16 3v4" />
+  </Outline>
+);
+
+export const UserCardIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <rect x="2.5" y="4.5" width="19" height="15" rx="2.5" />
+    <circle cx="9" cy="11" r="2.3" />
+    <path d="M5.2 16.6a4 4 0 0 1 7.6 0M15 9.5h3.5M15 13h3.5" />
+  </Outline>
+);
+
+export const FileIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+    <path d="M14 3v5h5M9 13h6M9 17h6" />
+  </Outline>
+);
+
+export const VideoIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <rect x="2.5" y="6" width="13" height="12" rx="2.5" />
+    <path d="m15.5 10.5 6-3.5v10l-6-3.5" />
+  </Outline>
+);
+
+export const MusicIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <path d="M9 18V5l11-2v13" />
+    <circle cx="6.5" cy="18" r="2.5" />
+    <circle cx="17.5" cy="16" r="2.5" />
+  </Outline>
+);
+
+export const StickerIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <path d="M20.5 12A8.5 8.5 0 1 1 12 3.5h.3a1 1 0 0 1 .9.6l.9 2a1 1 0 0 0 .9.6h3.6a1 1 0 0 1 1 1v.3" />
+    <path d="M20.5 12H16a3.5 3.5 0 0 0-3.5 3.5V20" />
+    <path d="M8.5 10h.01M12 8.5h.01" strokeWidth="2.4" />
+  </Outline>
+);
+
+export const BroadcastIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <circle cx="12" cy="12" r="2" />
+    <path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2" />
+  </Outline>
+);
+
+export const QrIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1" />
+    <rect x="14" y="3.5" width="6.5" height="6.5" rx="1" />
+    <rect x="3.5" y="14" width="6.5" height="6.5" rx="1" />
+    <path d="M14 14h2.5v2.5H14zM19 14h1.5M14 19.5h6.5M17.5 17v2.5" />
+  </Outline>
+);
+
+export const ShieldIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <path d="M12 2.8 4.5 5.6v6.1c0 4.6 3.2 8.2 7.5 9.6 4.3-1.4 7.5-5 7.5-9.6V5.6Z" />
+    <path d="m8.8 12 2.4 2.4 4.2-4.6" />
+  </Outline>
+);
+
+export const DownloadCloudIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <path d="M7.5 18.5a4.5 4.5 0 0 1-.6-8.96 6 6 0 0 1 11.6 1.46A3.75 3.75 0 0 1 17.5 18.5" />
+    <path d="m9 15 3 3 3-3M12 18v-8" />
+  </Outline>
+);
+
+export const ShareIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <circle cx="18" cy="5" r="2.6" />
+    <circle cx="6" cy="12" r="2.6" />
+    <circle cx="18" cy="19" r="2.6" />
+    <path d="m8.3 10.7 7.4-4.4M8.3 13.3l7.4 4.4" />
+  </Outline>
+);
+
+export const UsersPlusIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <circle cx="9" cy="8" r="3" />
+    <path d="M2.5 20a6.5 6.5 0 0 1 13 0M19 8v6M16 11h6" />
+  </Outline>
+);
+
+export const KeyIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <circle cx="8" cy="15" r="4.5" />
+    <path d="m11.2 11.8 9-9M16.5 6.5l3 3M14 9l2 2" />
+  </Outline>
+);
+
+export const HelpIcon = ({ className }: IconProps) => (
+  <Outline className={className}>
+    <circle cx="12" cy="12" r="9.2" />
+    <path d="M9.4 9.2a2.7 2.7 0 0 1 5.2.9c0 1.8-2.6 2.3-2.6 3.9M12 17h.01" strokeWidth="2.2" />
+  </Outline>
+);

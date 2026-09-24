@@ -241,6 +241,12 @@ export function SettingsPanel({
                 checked={settings.enterToSend}
                 onChange={(enterToSend) => onChange({ enterToSend })}
               />
+              <Toggle
+                label="Send reactions as a text"
+                hint="Your emoji reaction is also texted to the other person. Each one is a normal SMS and is billed as one."
+                checked={settings.reactionsAsText}
+                onChange={(reactionsAsText) => onChange({ reactionsAsText })}
+              />
             </div>
           </section>
 

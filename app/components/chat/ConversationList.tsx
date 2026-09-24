@@ -6,6 +6,7 @@ import { Avatar } from "../Avatar";
 import { CameraIcon, DotsIcon, MailIcon, MicIcon, PaperclipIcon, PinIcon, TrashIcon } from "../icons";
 import type { ChatPrefsApi } from "@/lib/chatPrefs";
 import type { ConversationSummary } from "@/lib/messageThread";
+import { previewLabel } from "@/lib/richText";
 
 
 export type ListFilter = "all" | "unread" | "pinned";
@@ -51,7 +52,7 @@ function Preview({ c, draft, unread }: { c: ConversationSummary; draft?: string;
   return (
     <p className={`mt-0.5 truncate text-[0.8125rem] ${tone}`}>
       {you}
-      {c.lastBody || "Message"}
+      {previewLabel(c.lastBody) || "Message"}
     </p>
   );
 }

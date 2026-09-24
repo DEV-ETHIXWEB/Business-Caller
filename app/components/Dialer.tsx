@@ -15,14 +15,17 @@ import type { ConversationSummary, ThreadMessage } from "@/lib/messageThread";
 import type { CallLogEntry } from "@/lib/callLog";
 import type { PublicCredentialInfo } from "@/lib/webauthn";
 import { Avatar, PRESET_COUNT } from "./Avatar";
-import { ArrowDownRightIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpRightIcon, BackspaceIcon, CameraIcon, CheckIcon, ChevronDownIcon, CloseIcon, CopyIcon, DotsIcon, DoubleCheckIcon, FingerprintIcon, ForwardIcon, GearIcon, KeypadIcon, LockIcon, MergeIcon, MessageIcon, MicIcon, MicOffIcon, PauseIcon, PeopleIcon, PersonPlusIcon, PhoneIcon, PlusIcon, SearchIcon, SpeakerIcon, TrashIcon } from "./icons";
+import { ArrowDownRightIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpRightIcon, BackspaceIcon, CalendarIcon, CameraIcon, CheckSquareIcon, ChevronDownIcon, CloseIcon, CopyIcon, DotsIcon, FingerprintIcon, InfoIcon, PencilIcon, PinIcon, ReplyIcon, StarIcon, ForwardIcon, GearIcon, KeypadIcon, LockIcon, MergeIcon, MessageIcon, MicIcon, MicOffIcon, PauseIcon, PeopleIcon, PersonPlusIcon, PhoneIcon, PlusIcon, SearchIcon, SpeakerIcon, TrashIcon } from "./icons";
 import { SettingsPanel, type ProfileStatusValue } from "./SettingsPanel";
 import { applySettings, useSettings } from "@/lib/settings";
 import { useChatPrefs } from "@/lib/chatPrefs";
 import { Composer } from "./chat/Composer";
 import { ConversationList } from "./chat/ConversationList";
-import { MediaView } from "./chat/MediaViews";
-import { isEmojiOnly } from "@/lib/emoji";
+import { MessageBubble } from "./chat/MessageBubble";
+import { ConfirmSheet } from "./chat/ConfirmSheet";
+import { StarredView } from "./chat/StarredView";
+import { MessageInfoDialog, type MessageInfo } from "./chat/MessageInfoDialog";
+import { makeReply, parseReply, type ContactCard, type Vote } from "@/lib/richText";
 import { blobToDataUrl, type VoiceRecording } from "@/lib/voice";
 import type { PreparedImage } from "@/lib/imageResize";
 
@@ -443,60 +446,13 @@ function guessDeviceLabel(): string {
 
 
 
-// WhatsApp-style delivery marks on your own messages: one tick sent, two
-// delivered, and a plain-words note when the carrier rejected it.
-function MessageTicks({ status }: { status: string }) {
-  if (status === "failed" || status === "undelivered") {
-    return <span className="font-semibold text-amber-200">Not delivered</span>;
-  }
-  if (status === "delivered" || status === "read") return <DoubleCheckIcon className="h-3.5 w-3.5" />;
-  if (status === "sent" || status === "partially_delivered") return <CheckIcon className="h-3 w-3" />;
-  return <CheckIcon className="h-3 w-3 opacity-50" />;
-}
-
-// Turns http(s) links inside a message into tappable links - the way
-// WhatsApp does - without ever using innerHTML.
-function linkify(text: string, highlight?: string): React.ReactNode[] {
-  // Wraps the searched words in <mark> (chat search), leaving everything else as text.
-  const mark = (plain: string, keyPrefix: string): React.ReactNode => {
-    const q = highlight?.trim();
-    if (!q) return plain;
-    const lower = plain.toLowerCase();
-    const needle = q.toLowerCase();
-    const out: React.ReactNode[] = [];
-    let at = 0;
-    for (let idx = lower.indexOf(needle); idx !== -1; idx = lower.indexOf(needle, at)) {
-      if (idx > at) out.push(plain.slice(at, idx));
-      out.push(
-        <mark key={`${keyPrefix}-${idx}`} className="rounded bg-yellow-300/80 px-0.5 text-slate-900">
-          {plain.slice(idx, idx + needle.length)}
-        </mark>,
-      );
-      at = idx + needle.length;
-    }
-    if (at < plain.length) out.push(plain.slice(at));
-    return out.length ? out : plain;
-  };
-
-  return text.split(/(https?:\/\/[^\s]+)/g).map((part, i) => {
-    if (i % 2 === 0) return <span key={i}>{mark(part, String(i))}</span>;
-    const trailing = part.match(/[.,!?;:)\]]+$/)?.[0] ?? "";
-    const url = trailing ? part.slice(0, -trailing.length) : part;
-    return (
-      <span key={i}>
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="underline decoration-current/50 underline-offset-2"
-        >
-          {mark(url, `u${i}`)}
-        </a>
-        {trailing}
-      </span>
-    );
-  });
+// Replies that count as answers to a poll or event: everything the other side
+// sent after it (a poll I sent is answered by them, and the other way round).
+function votesFor(m: ThreadMessage, all: ThreadMessage[]): Vote[] {
+  if (!m.body.includes("Poll:") && !m.body.includes("Event:")) return [];
+  return all
+    .filter((x) => x.direction !== m.direction && x.at > m.at && !x.media?.length)
+    .map((x) => ({ from: x.direction, at: x.at, body: x.body }));
 }
 
 function dayLabel(at: number): string {
@@ -656,13 +612,24 @@ export default function Dialer() {
   const [chatQuery, setChatQuery] = useState("");
   const [chatMatchIdx, setChatMatchIdx] = useState<number | null>(null);
   const [chatMenuOpen, setChatMenuOpen] = useState(false);
-  const [forwardBody, setForwardBody] = useState<string | null>(null);
+  const [forwardItems, setForwardItems] = useState<string[] | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [newContactOpen, setNewContactOpen] = useState(false);
   const [messageBody, setMessageBody] = useState("");
   const [pendingMessages, setPendingMessages] = useState<ThreadMessage[]>([]);
-  const [selectedMessageSid, setSelectedMessageSid] = useState<string | null>(null);
+  const [selectedSids, setSelectedSids] = useState<string[]>([]);
+  const [selMoreOpen, setSelMoreOpen] = useState(false);
+  const [replyTo, setReplyTo] = useState<{ sid: string; text: string; who: string } | null>(null);
+  const [editing, setEditing] = useState<{ sid: string; text: string } | null>(null);
+  const [infoMessage, setInfoMessage] = useState<ThreadMessage | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
+  const [flashSid, setFlashSid] = useState<string | null>(null);
+  const [starredOpen, setStarredOpen] = useState(false);
+  const [listMenuOpen, setListMenuOpen] = useState(false);
+  const jumpRequestRef = useRef<{ number: string; sid: string } | null>(null);
+  const threadLimitRef = useRef(50);
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
   const [smsError, setSmsError] = useState<string | null>(null);
   const [messageLog, setMessageLog] = useState<ThreadMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -786,6 +753,29 @@ export default function Dialer() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  // A chat opened from "Starred" (or a quote) scrolls to its message once the
+  // messages are in; an old one is fetched with a longer history first.
+  useEffect(() => {
+    const req = jumpRequestRef.current;
+    if (!req || req.number !== activeThread) return;
+    if (chatMessages.some((m) => m.sid === req.sid)) {
+      jumpRequestRef.current = null;
+      setTimeout(() => flashMessage(req.sid), 250);
+    } else if (messageLog.length && threadLimitRef.current < 300) {
+      threadLimitRef.current = 300;
+      void fetchThread(req.number);
+    } else if (messageLog.length && threadLimitRef.current >= 300) {
+      jumpRequestRef.current = null;
+      setToast("That message is too old to load");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageLog, activeThread]);
+
+  // Each chat starts from the newest 50 messages again.
+  useEffect(() => {
+    if (jumpRequestRef.current?.number !== activeThread) threadLimitRef.current = 50;
+  }, [activeThread]);
+
   // Escape closes the Settings or Profile dialog (desktop keyboards).
   useEffect(() => {
     if (!settingsOpen && !profileOpen) return;
@@ -800,13 +790,13 @@ export default function Dialer() {
 
   // Escape drops the current message selection (desktop keyboards).
   useEffect(() => {
-    if (!selectedMessageSid) return;
+    if (!selectedSids.length) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setSelectedMessageSid(null);
+      if (e.key === "Escape") setSelectedSids([]);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedMessageSid]);
+  }, [selectedSids.length]);
 
   // Pictures finish loading after the chat has scrolled down, and the emoji
   // panel or keyboard resizes the view. Either would push the newest message
@@ -1157,7 +1147,7 @@ export default function Dialer() {
       const res = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...saved, with: number }),
+        body: JSON.stringify({ ...saved, with: number, limit: threadLimitRef.current }),
       });
       const data = (await res.json().catch(() => ({}))) as { messages?: ThreadMessage[] };
       if (res.ok && data.messages) {
@@ -1929,14 +1919,22 @@ export default function Dialer() {
   async function sendOutgoing(outgoing: {
     body: string;
     media?: { dataUrl: string; kind: "audio" | "image"; previewUrl: string; peaks?: number[]; seconds?: number };
+    /** Send as a plain text even while a reply is pending (poll votes, reactions). */
+    skipReply?: boolean;
   }) {
     stickToBottomRef.current = true;
     playTap();
     setSmsError(null);
 
     if (!activeThread) return;
-    const body = outgoing.body.trim();
-    if (!body && !outgoing.media) return;
+    const plain = outgoing.body.trim();
+    if (!plain && !outgoing.media) return;
+    if (chatPrefs.isBlocked(activeThread)) {
+      setSmsError("You blocked this number. Unblock it to send a message.");
+      return;
+    }
+    const quoting = !outgoing.skipReply && replyTo ? replyTo : null;
+    const body = quoting ? makeReply(quoting.text, plain).replace(/\n$/, "") : plain;
 
     const saved = loadSession();
     if (!saved) {
@@ -1960,8 +1958,12 @@ export default function Dialer() {
       ];
     }
     setPendingMessages((p) => [...p, pending]);
-    if (body) setMessageBody("");
-    chatPrefs.setDraft(thread, "");
+    if (!outgoing.skipReply) {
+      if (plain) setMessageBody("");
+      chatPrefs.setDraft(thread, "");
+      setReplyTo(null);
+      setEditing(null);
+    }
 
     try {
       const res = await fetch("/api/sms", {
@@ -1979,28 +1981,30 @@ export default function Dialer() {
       void fetchConversations();
     } catch (err) {
       setSmsError(err instanceof Error ? err.message : "Failed to send message.");
-      if (body) setMessageBody((current) => current || body);
+      if (plain && !outgoing.skipReply) setMessageBody((current) => current || plain);
     } finally {
       setPendingMessages((p) => p.filter((m) => m.sid !== tempSid));
       if (outgoing.media?.previewUrl.startsWith("blob:")) URL.revokeObjectURL(outgoing.media.previewUrl);
     }
   }
 
-  // Sends a copy of a message's text to another number (the forward button).
-  async function forwardMessage(number: string, body: string) {
-    setForwardBody(null);
+  // Sends copies of the chosen messages' text to another number (the forward button).
+  async function forwardMessage(number: string, items: string[]) {
+    setForwardItems(null);
     const saved = loadSession();
     if (!saved) return;
     playTap();
     const label = contacts.find((c) => c.number === number)?.name ?? number;
     try {
-      const res = await fetch("/api/sms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...saved, to: number, message: body }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { sid?: string; error?: string };
-      if (!res.ok || !data.sid) throw new Error(data.error || "Could not forward the message.");
+      for (const body of items) {
+        const res = await fetch("/api/sms", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...saved, to: number, message: body }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { sid?: string; error?: string };
+        if (!res.ok || !data.sid) throw new Error(data.error || "Could not forward the message.");
+      }
       setToast(`Forwarded to ${label}`);
       void fetchConversations();
     } catch (err) {
@@ -2027,26 +2031,6 @@ export default function Dialer() {
   // Deleting a message calls Twilio's own delete - it's permanently removed
   // from Twilio's records, not just hidden here, so both of these confirm
   // before doing anything irreversible.
-  async function handleDeleteMessage(sid: string) {
-    if (!activeThread) return;
-    if (!window.confirm("Delete this message? This permanently removes it from Twilio's records and can't be undone.")) {
-      return;
-    }
-    playTap();
-    const saved = loadSession();
-    if (!saved) return;
-    try {
-      await fetch("/api/messages", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...saved, sid }),
-      });
-    } catch {
-      // Best-effort; the refresh below shows whatever Twilio actually has.
-    }
-    await fetchThread(activeThread);
-  }
-
   async function handleDeleteConversation(number: string) {
     const label = contacts.find((c) => c.number === number)?.name ?? number;
     if (
@@ -2209,8 +2193,10 @@ export default function Dialer() {
           m.at >= p.at - 10000,
       ),
   );
-  const chatMessages = [...messageLog, ...visiblePending];
-  const selectedMessage = selectedMessageSid ? chatMessages.find((m) => m.sid === selectedMessageSid) : undefined;
+  const chatMessages = [...messageLog, ...visiblePending].filter((m) => !chatPrefs.isHidden(m.sid));
+  const selectedMessages = chatMessages.filter((m) => selectedSids.includes(m.sid));
+  const selectedMessage = selectedMessages.length === 1 ? selectedMessages[0] : undefined;
+  const pinnedMessage = activeThread ? chatPrefs.prefs.pinnedMessage[activeThread] : undefined;
   const chatMatches = chatQuery.trim()
     ? chatMessages.filter((m) => m.body.toLowerCase().includes(chatQuery.trim().toLowerCase())).map((m) => m.sid)
     : [];
@@ -2229,12 +2215,162 @@ export default function Dialer() {
     document.getElementById(`msg-${currentMatchSid}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [currentMatchSid]);
 
+  // ---- Working with selected messages --------------------------------------
+
+  // The words of a message with any quoted reply part taken off, or "" for an
+  // attachment with no caption.
+  function textOf(m: ThreadMessage): string {
+    return parseReply(m.body).rest.trim();
+  }
+
+  function labelOf(m: ThreadMessage): string {
+    const text = textOf(m);
+    if (text) return text;
+    const kind = m.media?.[0]?.kind;
+    return kind === "audio" ? "Voice message" : kind === "image" ? "Photo" : kind === "video" ? "Video" : kind ? "Attachment" : "Message";
+  }
+
+  function startReply(m: ThreadMessage) {
+    playTap();
+    setEditing(null);
+    setReplyTo({ sid: m.sid, text: labelOf(m), who: m.direction === "outbound" ? "You" : (threadContactName ?? activeThread ?? "") });
+    setSelectedSids([]);
+    setSelMoreOpen(false);
+  }
+
+  function startEdit(m: ThreadMessage) {
+    playTap();
+    setReplyTo(null);
+    setEditing({ sid: m.sid, text: textOf(m) });
+    setMessageBody(textOf(m));
+    setSelectedSids([]);
+  }
+
+  function copySelected() {
+    playTap();
+    const text = selectedMessages.map((m) => textOf(m)).filter(Boolean).join("\n");
+    void navigator.clipboard?.writeText(text).catch(() => {});
+    setSelectedSids([]);
+    setToast("Copied");
+  }
+
+  function toggleStarSelected() {
+    playTap();
+    const allStarred = selectedMessages.every((m) => chatPrefs.isStarred(m.sid));
+    for (const m of selectedMessages) {
+      if (chatPrefs.isStarred(m.sid) === allStarred && activeThread) {
+        chatPrefs.toggleStar(m.sid, { number: activeThread, body: labelOf(m), at: m.at, direction: m.direction, hasMedia: !!m.media?.length });
+      }
+    }
+    setSelectedSids([]);
+    setToast(allStarred ? "Removed from starred" : "Starred");
+  }
+
+  function pinSelected() {
+    if (!activeThread || !selectedMessage) return;
+    const already = pinnedMessage?.sid === selectedMessage.sid;
+    chatPrefs.setPinnedMessage(activeThread, already ? null : { sid: selectedMessage.sid, body: labelOf(selectedMessage) });
+    setSelectedSids([]);
+    setToast(already ? "Message unpinned" : "Message pinned");
+  }
+
+  function reactToSelected(emoji: string) {
+    if (!selectedMessage) return;
+    playTap();
+    const same = chatPrefs.prefs.reactions[selectedMessage.sid] === emoji;
+    chatPrefs.react(selectedMessage.sid, same ? null : emoji);
+    if (!same && settings.reactionsAsText && activeThread) {
+      void sendOutgoing({ body: `${emoji} to \u201c${labelOf(selectedMessage).slice(0, 60)}\u201d`, skipReply: true });
+    }
+    setSelectedSids([]);
+    setSelMoreOpen(false);
+  }
+
+  // Deleting: "for me" only hides the text on this screen; "permanently"
+  // removes it from Twilio's records (there is no way to unsend an SMS the
+  // other phone already has).
+  function deleteForMe(sids: string[]) {
+    chatPrefs.hide(sids);
+    chatPrefs.unstarMany(sids);
+    setSelectedSids([]);
+    setToast(sids.length === 1 ? "Message deleted for you" : `${sids.length} messages deleted for you`);
+  }
+
+  async function deletePermanently(sids: string[]) {
+    if (!activeThread) return;
+    playTap();
+    const saved = loadSession();
+    if (!saved) return;
+    setSelectedSids([]);
+    const real = sids.filter((sid) => !sid.startsWith("pending-"));
+    await Promise.all(
+      real.map((sid) =>
+        fetch("/api/messages", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...saved, sid }) }).catch(() => undefined),
+      ),
+    );
+    chatPrefs.unstarMany(real);
+    await fetchThread(activeThread);
+    setToast(real.length === 1 ? "Message deleted" : `${real.length} messages deleted`);
+  }
+
+  const loadMessageInfo = useCallback(async (sid: string): Promise<MessageInfo> => {
+    const saved = loadSession();
+    if (!saved) throw new Error("Your session expired.");
+    const res = await fetch("/api/messages/info", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...saved, sid }) });
+    const data = (await res.json().catch(() => ({}))) as MessageInfo & { error?: string };
+    if (!res.ok) throw new Error(data.error || "Could not load the details.");
+    return data;
+  }, []);
+
+  // ---- Jumping to a message -----------------------------------------------------
+
+  function flashMessage(sid: string) {
+    stickToBottomRef.current = false;
+    document.getElementById(`msg-${sid}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    setFlashSid(sid);
+    setTimeout(() => setFlashSid((cur) => (cur === sid ? null : cur)), 1800);
+  }
+
+  function jumpToQuote(snippet: string) {
+    const probe = snippet.slice(0, 40).toLowerCase();
+    const target = chatMessages.find((m) => labelOf(m).toLowerCase().startsWith(probe) || labelOf(m).toLowerCase().includes(probe));
+    if (target) flashMessage(target.sid);
+    else setToast("The original message is not loaded");
+  }
+
+  function jumpToDate(value: string) {
+    if (!value) return;
+    const start = new Date(`${value}T00:00:00`).getTime();
+    const target = chatMessages.find((m) => m.at >= start);
+    if (target) flashMessage(target.sid);
+    else setToast("No messages on or after that date");
+  }
+
+  // Opening a starred message: go to its chat, then scroll to it once it has
+  // loaded (asking for a longer history if it is older than the newest 50).
+  function openStarred(number: string, sid: string) {
+    setStarredOpen(false);
+    jumpRequestRef.current = { number, sid };
+    threadLimitRef.current = 50;
+    setMessageTo(number);
+    setActiveTab("texts");
+    setActiveThread(number);
+  }
+
+  function saveContactFromCard(card: ContactCard) {
+    if (contacts.some((c) => c.number === card.number)) return;
+    const next = [...contacts, { id: crypto.randomUUID(), name: card.name, number: card.number }];
+    setContacts(next);
+    void saveContactsToServer(next);
+    setToast(`${card.name} saved to contacts`);
+  }
+
   function closeChat() {
     playTap();
     setMessageTo("");
     setActiveThread(null);
     setSmsError(null);
-    setSelectedMessageSid(null);
+    setSelectedSids([]);
   }
 
   // The open conversation. On a phone it is a full-screen chat pinned to the
@@ -2250,33 +2386,31 @@ export default function Dialer() {
       }
       style={isDesktop ? undefined : { top: vv?.top ?? 0, height: vv?.height ?? "100dvh" }}
     >
-      {selectedMessage ? (
-        <header className="flex shrink-0 items-center gap-1 border-b border-slate-900/5 pb-2 pl-1 pr-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pt-[max(0.5rem,env(safe-area-inset-top))] dark:border-white/5 lg:pt-0 animate-[fade-in_0.15s_ease-out]">
-          <button type="button" onClick={() => setSelectedMessageSid(null)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10" aria-label="Cancel selection">
+      {selectedMessages.length ? (
+        <header className="flex shrink-0 items-center gap-0.5 border-b border-slate-900/5 pb-2 pl-1 pr-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pt-[max(0.5rem,env(safe-area-inset-top))] dark:border-white/5 lg:pt-0 animate-[fade-in_0.15s_ease-out]">
+          <button type="button" onClick={() => { setSelectedSids([]); setSelMoreOpen(false); }} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10" aria-label="Cancel selection">
             <CloseIcon className="h-5 w-5" />
           </button>
-          <p className="flex-1 pl-1 text-base font-semibold text-slate-900 dark:text-white">1 selected</p>
-          {selectedMessage.body && (
+          <p className="min-w-0 flex-1 truncate pl-1 text-base font-semibold text-slate-900 dark:text-white">{selectedMessages.length} selected</p>
+          {selectedMessage && (
+            <button type="button" onClick={() => startReply(selectedMessage)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10" aria-label="Reply">
+              <ReplyIcon className="h-5 w-5" />
+            </button>
+          )}
+          <button type="button" onClick={toggleStarSelected} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10" aria-label={selectedMessages.every((m) => chatPrefs.isStarred(m.sid)) ? "Unstar message" : "Star message"}>
+            <StarIcon filled={selectedMessages.every((m) => chatPrefs.isStarred(m.sid))} className="h-5 w-5" />
+          </button>
+          {selectedMessages.some((m) => textOf(m)) && (
             <>
-              <button
-                type="button"
-                onClick={() => {
-                  playTap();
-                  void navigator.clipboard?.writeText(selectedMessage.body).catch(() => {});
-                  setSelectedMessageSid(null);
-                  setToast("Copied");
-                }}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
-                aria-label="Copy message"
-              >
+              <button type="button" onClick={copySelected} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10" aria-label="Copy message">
                 <CopyIcon className="h-5 w-5" />
               </button>
               <button
                 type="button"
                 onClick={() => {
                   playTap();
-                  setForwardBody(selectedMessage.body);
-                  setSelectedMessageSid(null);
+                  setForwardItems(selectedMessages.map((m) => textOf(m)).filter(Boolean));
+                  setSelectedSids([]);
                 }}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
                 aria-label="Forward message"
@@ -2288,15 +2422,62 @@ export default function Dialer() {
           <button
             type="button"
             onClick={() => {
-              const sid = selectedMessage.sid;
-              setSelectedMessageSid(null);
-              void handleDeleteMessage(sid);
+              playTap();
+              setConfirmDelete(selectedMessages.map((m) => m.sid));
             }}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-[#C0272D] dark:text-[#ff6b72] transition-all active:scale-90 active:bg-[#C0272D]/10"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#C0272D] dark:text-[#ff6b72] transition-all active:scale-90 active:bg-[#C0272D]/10"
             aria-label="Delete message"
           >
             <TrashIcon className="h-5 w-5" />
           </button>
+          {selectedMessage && (
+            <div className="relative">
+              <button type="button" onClick={() => setSelMoreOpen((o) => !o)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10" aria-label="More message actions" aria-haspopup="menu" aria-expanded={selMoreOpen}>
+                <DotsIcon className="h-5 w-5" />
+              </button>
+              {selMoreOpen && (
+                <div
+                  role="menu"
+                  aria-label="Message actions"
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-0 top-full z-30 mt-1 w-60 overflow-hidden rounded-2xl border border-white/70 bg-white p-1.5 shadow-[0_20px_50px_-15px_rgba(15,23,42,0.4)] animate-[pop-in_0.15s_ease-out] dark:border-white/10 dark:bg-[#17181c]"
+                >
+                  <div className="flex justify-between px-2 py-1.5" role="group" aria-label="React">
+                    {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => reactToSelected(emoji)}
+                        aria-label={`React ${emoji}`}
+                        aria-pressed={chatPrefs.prefs.reactions[selectedMessage.sid] === emoji}
+                        className={`flex h-9 w-9 items-center justify-center rounded-full text-xl transition-transform active:scale-125 ${chatPrefs.prefs.reactions[selectedMessage.sid] === emoji ? "bg-[#C0272D]/15 ring-1 ring-[#C0272D]" : "hover:bg-slate-900/5 dark:hover:bg-white/10"}`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                  {[
+                    { key: "info", label: "Message info", icon: <InfoIcon className="h-[1.125rem] w-[1.125rem]" />, run: () => { setInfoMessage(selectedMessage); setSelectedSids([]); }, show: !selectedMessage.sid.startsWith("pending-") },
+                    { key: "pin", label: pinnedMessage?.sid === selectedMessage.sid ? "Unpin message" : "Pin message", icon: <PinIcon className="h-[1.125rem] w-[1.125rem]" />, run: pinSelected, show: !!textOf(selectedMessage) },
+                    { key: "edit", label: "Edit and resend", icon: <PencilIcon className="h-[1.125rem] w-[1.125rem]" />, run: () => startEdit(selectedMessage), show: selectedMessage.direction === "outbound" && !!textOf(selectedMessage) },
+                  ]
+                    .filter((it) => it.show)
+                    .map((it) => (
+                      <button
+                        key={it.key}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => { setSelMoreOpen(false); it.run(); }}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-slate-900/5 dark:text-slate-100 dark:hover:bg-white/10"
+                      >
+                        {it.icon}
+                        {it.label}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
         </header>
       ) : chatSearchOpen ? (
         <header className="flex shrink-0 items-center gap-1 border-b border-slate-900/5 pb-2 pl-1 pr-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pt-[max(0.5rem,env(safe-area-inset-top))] dark:border-white/5 lg:pt-0 animate-[fade-in_0.15s_ease-out]">
@@ -2329,6 +2510,10 @@ export default function Dialer() {
           <span className="min-w-[3.25rem] text-center text-xs tabular-nums text-slate-500 dark:text-slate-400" aria-live="polite">
             {chatQuery.trim() ? (chatMatches.length ? `${currentMatchPosition + 1} of ${chatMatches.length}` : "0 found") : ""}
           </span>
+          <button type="button" onClick={() => { const el = dateInputRef.current; if (el) { try { el.showPicker(); } catch { el.focus(); el.click(); } } }} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10" aria-label="Search by date">
+            <CalendarIcon className="h-5 w-5" />
+          </button>
+          <input ref={dateInputRef} type="date" tabIndex={-1} aria-hidden onChange={(e) => jumpToDate(e.target.value)} className="pointer-events-none absolute h-0 w-0 opacity-0" />
           <button type="button" onClick={() => stepMatch(-1)} disabled={!chatMatches.length} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10 disabled:opacity-30" aria-label="Previous match">
             <ChevronDownIcon className="h-5 w-5 rotate-180" />
           </button>
@@ -2414,10 +2599,25 @@ export default function Dialer() {
       </header>
       )}
 
+      {pinnedMessage && !selectedMessages.length && !chatSearchOpen && (
+        <div className="mx-2 mt-1 flex items-center gap-2 rounded-xl border border-slate-900/5 bg-white/70 py-1 pl-3 pr-1 dark:border-white/5 dark:bg-white/[0.05]" role="group" aria-label="Pinned message">
+          <PinIcon className="h-4 w-4 shrink-0 text-[#C0272D] dark:text-[#ff6b72]" />
+          <button type="button" onClick={() => flashMessage(pinnedMessage.sid)} className="min-w-0 flex-1 truncate py-1 text-left text-[0.8125rem] text-slate-700 dark:text-slate-200" aria-label="Go to pinned message">
+            {pinnedMessage.body}
+          </button>
+          <button type="button" onClick={() => activeThread && chatPrefs.setPinnedMessage(activeThread, null)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 active:scale-90 dark:text-slate-400" aria-label="Unpin message">
+            <CloseIcon className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={threadScrollRef}
-        onClick={() => setSelectedMessageSid(null)}
+        onClick={() => {
+          setSelectedSids([]);
+          setSelMoreOpen(false);
+        }}
         onScroll={handleThreadScroll}
         className="chat-wallpaper min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 md:max-lg:px-[max(0.75rem,calc((100%-44rem)/2))] lg:my-2 lg:rounded-2xl lg:border lg:border-white/40 lg:bg-white/20 dark:lg:border-white/5 dark:lg:bg-black/10"
       >
@@ -2433,11 +2633,10 @@ export default function Dialer() {
           const prev = chatMessages[i - 1];
           const showDay = !prev || new Date(prev.at).toDateString() !== new Date(m.at).toDateString();
           const out = m.direction === "outbound";
-          const grouped = !showDay && prev && prev.direction === m.direction;
+          const grouped = !showDay && !!prev && prev.direction === m.direction;
           const isPending = m.sid.startsWith("pending-");
-          const selected = selectedMessageSid === m.sid;
           return (
-            <div key={m.sid} id={`msg-${m.sid}`}>
+            <div key={m.sid} id={`msg-${m.sid}`} className={flashSid === m.sid ? "flash-message rounded-2xl" : undefined}>
               {showDay && (
                 <div className="my-3 flex justify-center">
                   <span className="rounded-full bg-slate-900/5 px-3 py-1 text-[0.6875rem] font-medium text-slate-500 dark:bg-white/10 dark:text-slate-300">
@@ -2447,66 +2646,28 @@ export default function Dialer() {
               )}
               <div className={`flex ${out ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2.5"}`}>
                 <div className={`flex min-w-0 max-w-[82%] flex-col lg:max-w-[70%] ${out ? "items-end" : "items-start"}`}>
-                  {(() => {
-                    const hasMedia = !!m.media?.length;
-                    const emojiOnly = !hasMedia && isEmojiOnly(m.body);
-                    const time = (
-                      <span
-                        className={`inline-flex select-none items-center gap-1 text-[0.625rem] leading-none ${
-                          emojiOnly ? "text-slate-400 dark:text-slate-500" : out ? "text-white/75" : "text-slate-400"
-                        }`}
-                      >
-                        <span>{new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                        {out && <MessageTicks status={m.status} />}
-                      </span>
-                    );
-                    return (
-                      <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!isPending) setSelectedMessageSid(selected ? null : m.sid);
-                        }}
-                        className={`relative text-[0.9375rem] leading-snug ${
-                          emojiOnly
-                            ? "px-1 py-0.5"
-                            : `${hasMedia ? "p-1" : "px-3 py-1.5"} shadow-[0_1px_1.5px_rgba(15,23,42,0.14)] ${
-                                out
-                                  ? `rounded-2xl bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white ${grouped ? "" : "bubble-tail-out rounded-tr-none"}`
-                                  : `rounded-2xl bg-white text-slate-800 dark:bg-[#26272c] dark:text-slate-100 ${grouped ? "" : "bubble-tail-in rounded-tl-none"}`
-                              }`
-                        } ${selected ? "rounded-2xl outline outline-2 outline-offset-2 outline-[#C0272D]/50" : ""}`}
-                      >
-                        {hasMedia && (
-                          <div className="flex flex-col gap-1">
-                            {m.media!.map((media) => (
-                              <div key={media.sid} className={media.kind === "audio" ? "px-2 pt-1.5" : ""}>
-                                <MediaView media={media} out={out} />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {emojiOnly ? (
-                          <div className={`flex flex-col ${out ? "items-end" : "items-start"} gap-1`}>
-                            <p className="text-[2.75rem] leading-none">{m.body.trim()}</p>
-                            {time}
-                          </div>
-                        ) : hasMedia ? (
-                          <div className={`${m.body ? "px-2 pb-1 pt-1.5" : "px-2 pb-1 pt-0.5"}`}>
-                            {m.body && <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{linkify(m.body, chatSearchOpen ? chatQuery : undefined)}</p>}
-                            <div className="mt-0.5 flex justify-end">{time}</div>
-                          </div>
-                        ) : (
-                          /* The time floats to the end of the last line
-                             (WhatsApp style), so short messages stay one
-                             compact bubble. */
-                          <p className="flow-root whitespace-pre-wrap [overflow-wrap:anywhere]">
-                            {linkify(m.body, chatSearchOpen ? chatQuery : undefined)}
-                            <span className="float-right ml-2.5 mt-[7px]">{time}</span>
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })()}
+                  <MessageBubble
+                    m={m}
+                    out={out}
+                    grouped={grouped}
+                    selected={selectedSids.includes(m.sid)}
+                    isPending={isPending}
+                    highlight={chatSearchOpen ? chatQuery : undefined}
+                    reaction={chatPrefs.prefs.reactions[m.sid]}
+                    starred={chatPrefs.isStarred(m.sid)}
+                    votes={votesFor(m, chatMessages)}
+                    isKnownNumber={(number) => contacts.some((c) => c.number === number)}
+                    onSelect={(mode) => setSelectedSids((cur) => (mode === "start" ? (cur.includes(m.sid) ? cur : [...cur, m.sid]) : cur.includes(m.sid) ? cur.filter((x) => x !== m.sid) : [...cur, m.sid]))}
+                    onSwipeReply={() => startReply(m)}
+                    onJumpToQuote={jumpToQuote}
+                    onVote={(n) => void sendOutgoing({ body: String(n) })}
+                    onRsvp={(a) => void sendOutgoing({ body: a })}
+                    onMessageNumber={(number) => {
+                      setMessageTo(number);
+                      setActiveThread(number);
+                    }}
+                    onSaveContact={saveContactFromCard}
+                  />
                 </div>
               </div>
             </div>
@@ -2542,6 +2703,18 @@ export default function Dialer() {
           resetKey={activeThread ?? ""}
           busy={false}
           textareaRef={composerRef}
+          banner={
+            editing
+              ? { kind: "edit", title: "Editing message", text: "This sends a new text. The original stays as it was." }
+              : replyTo
+                ? { kind: "reply", title: `Replying to ${replyTo.who}`, text: replyTo.text }
+                : null
+          }
+          onCancelBanner={() => {
+            if (editing) setMessageBody("");
+            setReplyTo(null);
+            setEditing(null);
+          }}
         />
       </div>
     </div>
@@ -2551,19 +2724,62 @@ export default function Dialer() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between gap-2">
         <h1 className="truncate text-xl font-semibold tracking-wide text-slate-900 dark:text-white">Texts</h1>
-        <button
-          type="button"
-          onClick={() => {
-            playTap();
-            setNewMessageOpen((open) => !open);
-            setSmsError(null);
-          }}
-          aria-expanded={newMessageOpen}
-          className={HEADER_PILL_CLASS}
-        >
-          <PlusIcon className={`h-3.5 w-3.5 transition-transform ${newMessageOpen ? "rotate-45" : ""}`} />
-          New message
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              playTap();
+              setNewMessageOpen((open) => !open);
+              setSmsError(null);
+            }}
+            aria-expanded={newMessageOpen}
+            className={HEADER_PILL_CLASS}
+          >
+            <PlusIcon className={`h-3.5 w-3.5 transition-transform ${newMessageOpen ? "rotate-45" : ""}`} />
+            New message
+          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setListMenuOpen((o) => !o)}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
+              aria-label="Chat list options"
+              aria-haspopup="menu"
+              aria-expanded={listMenuOpen}
+            >
+              <DotsIcon className="h-5 w-5" />
+            </button>
+            {listMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setListMenuOpen(false)} />
+                <div
+                  role="menu"
+                  aria-label="Chat list options"
+                  className="absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-2xl border border-white/70 bg-white p-1.5 shadow-[0_20px_50px_-15px_rgba(15,23,42,0.4)] animate-[pop-in_0.15s_ease-out] dark:border-white/10 dark:bg-[#17181c]"
+                >
+                  {[
+                    { key: "starred", label: "Starred messages", icon: <StarIcon className="h-[1.125rem] w-[1.125rem]" />, run: () => setStarredOpen(true) },
+                    { key: "readall", label: "Mark all as read", icon: <CheckSquareIcon className="h-[1.125rem] w-[1.125rem]" />, run: () => { chatPrefs.markAllRead(conversations.map((c) => c.number)); setToast("All chats marked as read"); } },
+                  ].map((it) => (
+                    <button
+                      key={it.key}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setListMenuOpen(false);
+                        it.run();
+                      }}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-slate-900/5 dark:text-slate-100 dark:hover:bg-white/10"
+                    >
+                      {it.icon}
+                      {it.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
           {newMessageOpen && (
@@ -3363,10 +3579,34 @@ export default function Dialer() {
       )}
 
 
-      {forwardBody !== null && (
+      {confirmDelete && (
+        <ConfirmSheet
+          title={confirmDelete.length === 1 ? "Delete message?" : `Delete ${confirmDelete.length} messages?`}
+          body="You can hide it just for you, or remove it from Twilio's records. Either way, the other person's phone keeps its own copy: a text message cannot be unsent."
+          options={[
+            { label: "Delete for me", detail: "Hides it on this screen only. It stays in Twilio.", run: () => deleteForMe(confirmDelete) },
+            { label: "Delete permanently", detail: "Removes it from Twilio's records. This cannot be undone.", danger: true, run: () => void deletePermanently(confirmDelete) },
+          ]}
+          onClose={() => setConfirmDelete(null)}
+        />
+      )}
+
+      {infoMessage && <MessageInfoDialog message={infoMessage} load={loadMessageInfo} onClose={() => setInfoMessage(null)} />}
+
+      {starredOpen && (
+        <StarredView
+          starred={chatPrefs.prefs.starred}
+          nameFor={(number) => contacts.find((c) => c.number === number)?.name}
+          onOpen={openStarred}
+          onUnstar={(sid) => chatPrefs.unstarMany([sid])}
+          onClose={() => setStarredOpen(false)}
+        />
+      )}
+
+      {forwardItems !== null && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-[fade-in_0.15s_ease-out] lg:items-center lg:p-6"
-          onClick={() => setForwardBody(null)}
+          onClick={() => setForwardItems(null)}
         >
           <div
             role="dialog"
@@ -3377,11 +3617,11 @@ export default function Dialer() {
           >
             <div className="flex items-center justify-between px-4 pb-2 pt-4">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Forward to</h2>
-              <button type="button" onClick={() => setForwardBody(null)} className={MINI_ICON_BUTTON_CLASS} aria-label="Close">
+              <button type="button" onClick={() => setForwardItems(null)} className={MINI_ICON_BUTTON_CLASS} aria-label="Close">
                 <CloseIcon className="h-3.5 w-3.5" />
               </button>
             </div>
-            <p className="mx-4 mb-2 truncate rounded-xl bg-slate-900/5 px-3 py-2 text-xs text-slate-500 dark:bg-white/5 dark:text-slate-400">{forwardBody}</p>
+            <p className="mx-4 mb-2 truncate rounded-xl bg-slate-900/5 px-3 py-2 text-xs text-slate-500 dark:bg-white/5 dark:text-slate-400">{forwardItems.length > 1 ? `${forwardItems.length} messages` : forwardItems[0]}</p>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
               {Array.from(new Set([...conversations.map((c) => c.number), ...contacts.map((c) => c.number)]))
                 .filter((n) => n !== activeThread)
@@ -3391,7 +3631,7 @@ export default function Dialer() {
                     <button
                       key={number}
                       type="button"
-                      onClick={() => void forwardMessage(number, forwardBody)}
+                      onClick={() => void forwardMessage(number, forwardItems)}
                       className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-slate-900/5 dark:hover:bg-white/10"
                     >
                       <Avatar label={name ?? number} size="md" />

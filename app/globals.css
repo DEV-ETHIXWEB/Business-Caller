@@ -202,3 +202,25 @@ html.dark[data-wallpaper="blush"] .chat-wallpaper {
 .dark .bubble-tail-in::after {
   background: #26272c;
 }
+
+/* Brief highlight on a message you jumped to (starred, pinned, a quote). */
+@keyframes flash-message {
+  0%,
+  60% {
+    background-color: rgba(250, 204, 21, 0.35);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.flash-message {
+  animation: flash-message 1.8s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash-message {
+    animation: none;
+    background-color: rgba(250, 204, 21, 0.25);
+  }
+}

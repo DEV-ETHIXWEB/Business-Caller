@@ -16,6 +16,8 @@ export const runtime = "nodejs";
 const IP_RATE_LIMIT = 90;
 const IP_RATE_WINDOW_MS = 5 * 60 * 1000;
 const THREAD_PAGE_SIZE = 50;
+// A chat can ask for more (jumping to an old starred message, exporting a chat).
+const THREAD_MAX_SIZE = 500;
 
 const REQUIRED_ENV_VARS = ["TWILIO_ACCOUNT_SID", "TWILIO_API_KEY_SID", "TWILIO_API_KEY_SECRET", "APP_USERS"] as const;
 
@@ -36,6 +38,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid number." }, { status: 400 });
   }
 
+  const requested = Number(fields.limit);
+  const pageSize = Number.isInteger(requested) && requested > 0 ? Math.min(requested, THREAD_MAX_SIZE) : THREAD_PAGE_SIZE;
+
   const client = twilio(process.env.TWILIO_API_KEY_SID!, process.env.TWILIO_API_KEY_SECRET!, {
     accountSid: process.env.TWILIO_ACCOUNT_SID!,
   });
@@ -50,8 +55,8 @@ export async function POST(req: Request) {
     // `to`/`from` at a time, so a two-party thread needs both directions
     // fetched and merged.
     const [outbound, inbound] = await Promise.all([
-      client.messages.list({ from: ourNumber, to: withNumber, limit: THREAD_PAGE_SIZE }),
-      client.messages.list({ from: withNumber, to: ourNumber, limit: THREAD_PAGE_SIZE }),
+      client.messages.list({ from: ourNumber, to: withNumber, limit: pageSize }),
+      client.messages.list({ from: withNumber, to: ourNumber, limit: pageSize }),
     ]);
 
     const messages: ThreadMessage[] = await Promise.all(

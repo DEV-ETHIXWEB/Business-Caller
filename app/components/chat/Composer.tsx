@@ -35,6 +35,8 @@ export function Composer({
   resetKey,
   busy,
   textareaRef,
+  banner,
+  onCancelBanner,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -48,6 +50,9 @@ export function Composer({
   resetKey: string;
   busy: boolean;
   textareaRef?: React.MutableRefObject<HTMLTextAreaElement | null>;
+  /** "Replying to..." or "Editing..." shown above the box. */
+  banner?: { kind: "reply" | "edit"; title: string; text: string } | null;
+  onCancelBanner?: () => void;
 }) {
   const innerRef = useRef<HTMLTextAreaElement | null>(null);
   const setRef = useCallback(
@@ -110,6 +115,11 @@ export function Composer({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [value, image, recording]);
+
+  // Replying or editing puts you straight into the box.
+  useEffect(() => {
+    if (banner) innerRef.current?.focus();
+  }, [banner]);
 
   // A different chat: drop panels, stop any recording, forget the picture.
   useEffect(() => {
@@ -260,6 +270,23 @@ export function Composer({
   return (
     <div ref={rootRef} className="relative">
       {shownError && <p className="px-2 pb-1.5 text-xs text-red-600 dark:text-red-400">{shownError}</p>}
+
+      {banner && (
+        <div
+          className="mb-2 flex items-center gap-2 rounded-2xl border border-slate-900/10 bg-white/80 py-1.5 pl-3 pr-1.5 animate-[slide-fade-in_0.18s_ease-out] dark:border-white/10 dark:bg-white/[0.06]"
+          role="group"
+          aria-label={banner.kind === "reply" ? "Replying" : "Editing"}
+        >
+          <span className="h-9 w-1 shrink-0 rounded-full bg-[#C0272D]" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold text-[#C0272D] dark:text-[#ff6b72]">{banner.title}</p>
+            <p className="truncate text-[0.8125rem] text-slate-600 dark:text-slate-300">{banner.text}</p>
+          </div>
+          <button type="button" onClick={onCancelBanner} className={`${PILL_ICON} !h-9 !w-9`} aria-label={banner.kind === "reply" ? "Cancel reply" : "Cancel editing"}>
+            <CloseIcon className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {image && (
         <div className="mb-2 flex items-center gap-3 rounded-2xl border border-slate-900/10 bg-white/80 p-2 animate-[slide-fade-in_0.2s_ease-out] dark:border-white/10 dark:bg-white/[0.06]">

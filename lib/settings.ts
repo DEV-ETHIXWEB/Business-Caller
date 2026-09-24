@@ -21,6 +21,8 @@ export interface Settings {
   haptics: boolean;
   /** Computer keyboards: Enter sends and Shift+Enter is a new line. */
   enterToSend: boolean;
+  /** Also text the other person your emoji reaction (costs one SMS each). */
+  reactionsAsText: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -30,6 +32,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sounds: true,
   haptics: true,
   enterToSend: true,
+  reactionsAsText: false,
 };
 
 export const SETTINGS_KEY = "dialer_settings";
@@ -53,6 +56,7 @@ function parseSettings(raw: string | null): Settings {
       sounds: typeof data.sounds === "boolean" ? data.sounds : DEFAULT_SETTINGS.sounds,
       haptics: typeof data.haptics === "boolean" ? data.haptics : DEFAULT_SETTINGS.haptics,
       enterToSend: typeof data.enterToSend === "boolean" ? data.enterToSend : DEFAULT_SETTINGS.enterToSend,
+      reactionsAsText: typeof data.reactionsAsText === "boolean" ? data.reactionsAsText : DEFAULT_SETTINGS.reactionsAsText,
     };
   } catch {
     return DEFAULT_SETTINGS;
