@@ -15,6 +15,8 @@ import type { ConversationSummary, ThreadMessage } from "@/lib/messageThread";
 import type { CallLogEntry } from "@/lib/callLog";
 import type { PublicCredentialInfo } from "@/lib/webauthn";
 import { Avatar, PRESET_COUNT } from "./Avatar";
+import { SettingsPanel, type ProfileStatusValue } from "./SettingsPanel";
+import { applySettings, useSettings } from "@/lib/settings";
 
 const MAX_SMS_LENGTH = 1600;
 
@@ -225,6 +227,43 @@ function CopyIcon({ className }: { className?: string }) {
   );
 }
 
+function GearIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+    </svg>
+  );
+}
+
+// The profile picture with the person's mood status as a small badge, like a
+// status dot on a chat app avatar.
+function AvatarWithStatus({
+  label,
+  photoUrl,
+  size,
+  status,
+}: {
+  label: string;
+  photoUrl?: string;
+  size: "sm" | "md" | "lg" | "xl";
+  status?: ProfileStatusValue;
+}) {
+  return (
+    <span className="relative inline-flex">
+      <Avatar label={label} photoUrl={photoUrl} size={size} />
+      {status?.emoji && (
+        <span
+          className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[0.7rem] leading-none shadow-[0_2px_6px_rgba(15,23,42,0.3)] ring-1 ring-slate-900/10 dark:bg-[#26272c] dark:ring-white/10"
+          aria-hidden
+        >
+          {status.emoji}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function ArrowLeftIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -368,7 +407,7 @@ const COMPACT_INPUT_CLASS =
   "w-full rounded-xl border border-white/70 bg-white/60 px-3 py-2 text-sm text-slate-900 shadow-[inset_0_2px_6px_rgba(15,23,42,0.08)] outline-none backdrop-blur-sm transition placeholder:text-slate-400 focus:border-[#C0272D]/40 focus:bg-white/90 focus:ring-4 focus:ring-[#C0272D]/15 dark:border-white/10 dark:bg-white/5 dark:text-slate-50 dark:shadow-[inset_0_2px_6px_rgba(0,0,0,0.4)] dark:placeholder:text-slate-500 dark:focus:bg-white/10 dark:focus:ring-[#C0272D]/20";
 
 const SELECT_CLASS =
-  "w-full appearance-none rounded-xl border border-white/70 bg-white/60 py-2 pl-8 pr-7 text-[11px] font-medium text-slate-700 shadow-[inset_0_2px_4px_rgba(15,23,42,0.06)] outline-none backdrop-blur-sm transition focus:border-[#C0272D]/40 focus:ring-2 focus:ring-[#C0272D]/15 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]";
+  "w-full appearance-none rounded-xl border border-white/70 bg-white/60 py-2 pl-8 pr-7 text-[0.6875rem] font-medium text-slate-700 shadow-[inset_0_2px_4px_rgba(15,23,42,0.06)] outline-none backdrop-blur-sm transition focus:border-[#C0272D]/40 focus:ring-2 focus:ring-[#C0272D]/15 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]";
 
 const PRIMARY_BUTTON_CLASS =
   "mt-6 w-full rounded-full bg-gradient-to-b from-slate-800 to-slate-950 py-3 font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_25px_-8px_rgba(15,23,42,0.6),0_0_30px_-8px_rgba(192,39,45,0.35)] transition-all hover:brightness-110 active:scale-[0.98] active:shadow-[inset_0_2px_6px_rgba(0,0,0,0.4)] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 dark:from-white dark:to-slate-100 dark:text-slate-900 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_10px_25px_-8px_rgba(0,0,0,0.5),0_0_30px_-8px_rgba(192,39,45,0.4)]";
@@ -383,7 +422,7 @@ function KeypadButton({ digit, letters, onClick }: { digit: string; letters: str
   return (
     <button type="button" onClick={onClick} className={KEYPAD_BUTTON_CLASS}>
       <span className="text-lg leading-none">{digit}</span>
-      <span className="h-2.5 text-[8px] font-semibold uppercase leading-none tracking-[0.15em] text-slate-400 dark:text-slate-500">
+      <span className="h-2.5 text-[0.5rem] font-semibold uppercase leading-none tracking-[0.15em] text-slate-400 dark:text-slate-500">
         {letters}
       </span>
     </button>
@@ -416,7 +455,7 @@ const COMPACT_ERROR_CLASS = "text-xs text-red-600 dark:text-red-400";
 const NAV_RAIL_CLASS =
   "hidden lg:flex lg:h-dvh lg:w-20 lg:shrink-0 lg:flex-col lg:items-center lg:gap-2 lg:border-r lg:border-white/50 lg:bg-white/60 lg:py-6 lg:backdrop-blur-2xl lg:backdrop-saturate-150 dark:lg:border-white/10 dark:lg:bg-white/[0.04]";
 
-const NAV_BUTTON_BASE_CLASS = "flex w-16 flex-col items-center gap-1 rounded-2xl px-2 py-2.5 text-[10px] font-medium transition-all active:scale-95";
+const NAV_BUTTON_BASE_CLASS = "flex w-16 flex-col items-center gap-1 rounded-2xl px-2 py-2.5 text-[0.625rem] font-medium transition-all active:scale-95";
 
 const NAV_BUTTON_ACTIVE_CLASS = `${NAV_BUTTON_BASE_CLASS} bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[0_8px_20px_-8px_rgba(192,39,45,0.5)]`;
 
@@ -461,6 +500,22 @@ function relativeDay(at: number): string {
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+const STATUS_PRESETS: ProfileStatusValue[] = [
+  { emoji: "😊", text: "Available" },
+  { emoji: "💼", text: "At work" },
+  { emoji: "🗓️", text: "In a meeting" },
+  { emoji: "🎧", text: "On a call" },
+  { emoji: "🚗", text: "Driving" },
+  { emoji: "🏖️", text: "Away" },
+  { emoji: "🔕", text: "Do not disturb" },
+  { emoji: "🤒", text: "Out sick" },
+];
+
+const MOOD_EMOJIS = ["💬", "😊", "😎", "🤔", "😴", "🔥", "🎉", "❤️"];
+
+const MAX_ABOUT_LENGTH = 100;
+const MAX_STATUS_TEXT_LENGTH = 40;
+
 const MISSED_STATUSES = new Set(["no-answer", "busy", "failed", "canceled"]);
 
 function callStatusLabel(entry: CallLogEntry): string {
@@ -474,7 +529,14 @@ function callStatusLabel(entry: CallLogEntry): string {
 async function requestToken(
   username: string,
   password: string,
-): Promise<{ token: string; phoneNumber: string; label: string; avatarUrl?: string }> {
+): Promise<{
+  token: string;
+  phoneNumber: string;
+  label: string;
+  avatarUrl?: string;
+  about?: string;
+  status?: ProfileStatusValue;
+}> {
   const res = await fetch("/api/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -486,6 +548,8 @@ async function requestToken(
     phoneNumber?: string;
     label?: string;
     avatarUrl?: string;
+    about?: string;
+    status?: ProfileStatusValue;
     error?: string;
   };
 
@@ -493,7 +557,14 @@ async function requestToken(
     throw new Error(data.error || "Unable to unlock the dialer.");
   }
 
-  return { token: data.token, phoneNumber: data.phoneNumber, label: data.label ?? "", avatarUrl: data.avatarUrl };
+  return {
+    token: data.token,
+    phoneNumber: data.phoneNumber,
+    label: data.label ?? "",
+    avatarUrl: data.avatarUrl,
+    about: data.about,
+    status: data.status,
+  };
 }
 
 // Resizes/compresses an uploaded photo client-side before it's ever sent to
@@ -690,6 +761,15 @@ export default function Dialer() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, updateSettings] = useSettings();
+  const settingsRef = useRef(settings);
+  const [about, setAbout] = useState("");
+  const [aboutDraft, setAboutDraft] = useState<string | null>(null);
+  const [status, setStatus] = useState<ProfileStatusValue | undefined>(undefined);
+  const [customStatusText, setCustomStatusText] = useState("");
+  const [customStatusEmoji, setCustomStatusEmoji] = useState("💬");
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
 
   // Which of the three main tabs is showing - the Google Voice-style
   // Calls/Texts/Contacts split, shared by both the desktop nav rail and the
@@ -854,6 +934,19 @@ export default function Dialer() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  // On "System", follow the device when it flips between light and dark.
+  useEffect(() => {
+    if (settings.theme !== "system") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => applySettings(settingsRef.current);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [settings.theme]);
+
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -874,12 +967,14 @@ export default function Dialer() {
     // something a web app can work around), so this is silently a no-op
     // there - the sound below still plays on every platform regardless.
     try {
-      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      if (settingsRef.current.haptics && typeof navigator !== "undefined" && "vibrate" in navigator) {
         navigator.vibrate(12);
       }
     } catch {
       // Never let a vibration failure affect anything else.
     }
+
+    if (!settingsRef.current.sounds) return;
 
     try {
       const AudioCtx =
@@ -1043,7 +1138,7 @@ export default function Dialer() {
       }
 
       try {
-        const { token, phoneNumber, label, avatarUrl: fetchedAvatarUrl } = await requestToken(
+        const { token, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus } = await requestToken(
           saved.username,
           saved.password,
         );
@@ -1053,6 +1148,8 @@ export default function Dialer() {
         setSignedInUsername(saved.username);
         setSignedInLabel(label);
         setAvatarUrl(fetchedAvatarUrl);
+        setAbout(fetchedAbout ?? "");
+        setStatus(fetchedStatus);
         await setupDevice(token);
         if (!cancelled) setUnlocked(true);
       } catch {
@@ -1443,7 +1540,7 @@ export default function Dialer() {
       const verifyData = (await verifyRes.json().catch(() => ({}))) as { username?: string; password?: string };
       if (!verifyRes.ok || !verifyData.username || !verifyData.password) throw new Error("Could not verify.");
 
-      const { token, phoneNumber, label, avatarUrl: fetchedAvatarUrl } = await requestToken(
+      const { token, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus } = await requestToken(
         verifyData.username,
         verifyData.password,
       );
@@ -1452,6 +1549,8 @@ export default function Dialer() {
       setSignedInUsername(verifyData.username);
       setSignedInLabel(label);
       setAvatarUrl(fetchedAvatarUrl);
+      setAbout(fetchedAbout ?? "");
+      setStatus(fetchedStatus);
       await setupDevice(token);
       setUnlocked(true);
     } catch (err) {
@@ -1655,18 +1754,52 @@ export default function Dialer() {
     setUnlocking(true);
     try {
       const username = usernameInput.trim();
-      const { token, phoneNumber, label, avatarUrl: fetchedAvatarUrl } = await requestToken(username, passwordInput);
+      const { token, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus } = await requestToken(username, passwordInput);
       saveSession(username, passwordInput);
       setCallerId(phoneNumber);
       setSignedInUsername(username);
       setSignedInLabel(label);
       setAvatarUrl(fetchedAvatarUrl);
+      setAbout(fetchedAbout ?? "");
+      setStatus(fetchedStatus);
       await setupDevice(token);
       setUnlocked(true);
     } catch (err) {
       setLockError(err instanceof Error ? err.message : "Unable to unlock the dialer.");
     } finally {
       setUnlocking(false);
+    }
+  }
+
+  // Saves the About line and/or mood status. Shown right away; put back if
+  // the server refuses, so the screen never claims something that is not saved.
+  async function saveProfile(patch: { about?: string; status?: ProfileStatusValue | null }) {
+    const saved = loadSession();
+    if (!saved) return;
+    const previousAbout = about;
+    const previousStatus = status;
+    setProfileSaveError(null);
+    if (patch.about !== undefined) setAbout(patch.about.trim());
+    if (patch.status !== undefined) setStatus(patch.status ?? undefined);
+
+    try {
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...saved, ...patch }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        about?: string;
+        status?: ProfileStatusValue;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Could not save your profile.");
+      setAbout(data.about ?? "");
+      setStatus(data.status);
+    } catch (err) {
+      setAbout(previousAbout);
+      setStatus(previousStatus);
+      setProfileSaveError(err instanceof Error ? err.message : "Could not save your profile.");
     }
   }
 
@@ -1683,8 +1816,13 @@ export default function Dialer() {
     setSignedInUsername("");
     setSignedInLabel("");
     setAvatarUrl(undefined);
+    setAbout("");
+    setAboutDraft(null);
+    setStatus(undefined);
+    setProfileSaveError(null);
     setAvatarError(null);
     setProfileOpen(false);
+    setSettingsOpen(false);
     setActiveTab("calls");
     setCallLog([]);
     setDialOverlayOpen(false);
@@ -1982,7 +2120,7 @@ export default function Dialer() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-wide text-slate-900 dark:text-white">Calls</h1>
-        {callLogLoading && <span className="text-[10px] text-slate-400 dark:text-slate-500">syncing…</span>}
+        {callLogLoading && <span className="text-[0.625rem] text-slate-400 dark:text-slate-500">syncing…</span>}
       </div>
       <div className="relative mt-3">
         <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -2008,8 +2146,8 @@ export default function Dialer() {
               <button type="button" onClick={() => dialNumber(entry.with)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                 <Avatar label={name ?? entry.with} size="lg" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-semibold text-slate-800 dark:text-slate-100">{name ?? entry.with}</p>
-                  <p className={`flex items-center gap-1 truncate text-[13px] ${missed ? "text-[#C0272D]" : "text-slate-500 dark:text-slate-400"}`}>
+                  <p className="truncate text-[0.9375rem] font-semibold text-slate-800 dark:text-slate-100">{name ?? entry.with}</p>
+                  <p className={`flex items-center gap-1 truncate text-[0.8125rem] ${missed ? "text-[#C0272D]" : "text-slate-500 dark:text-slate-400"}`}>
                     {entry.direction === "inbound" ? (
                       <ArrowDownRightIcon className="h-3 w-3 shrink-0" />
                     ) : (
@@ -2020,7 +2158,7 @@ export default function Dialer() {
                 </div>
               </button>
               <div className="flex shrink-0 flex-col items-end gap-1.5">
-                <span className="text-[11px] text-slate-400 dark:text-slate-500">{relativeDay(entry.at)}</span>
+                <span className="text-[0.6875rem] text-slate-400 dark:text-slate-500">{relativeDay(entry.at)}</span>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
@@ -2132,7 +2270,7 @@ export default function Dialer() {
           <p className="truncate text-base font-semibold leading-tight text-slate-900 dark:text-white">
             {threadContactName ?? activeThread}
           </p>
-          <p className="truncate text-[11px] leading-tight text-slate-500 dark:text-slate-400">
+          <p className="truncate text-[0.6875rem] leading-tight text-slate-500 dark:text-slate-400">
             {messagesLoading ? "syncing…" : threadContactName ? activeThread : "Text message"}
           </p>
         </div>
@@ -2172,7 +2310,7 @@ export default function Dialer() {
             <div key={m.sid}>
               {showDay && (
                 <div className="my-3 flex justify-center">
-                  <span className="rounded-full bg-slate-900/5 px-3 py-1 text-[11px] font-medium text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                  <span className="rounded-full bg-slate-900/5 px-3 py-1 text-[0.6875rem] font-medium text-slate-500 dark:bg-white/10 dark:text-slate-300">
                     {dayLabel(m.at)}
                   </span>
                 </div>
@@ -2184,7 +2322,7 @@ export default function Dialer() {
                       e.stopPropagation();
                       if (!isPending) setSelectedMessageSid(selected ? null : m.sid);
                     }}
-                    className={`relative px-3 py-1.5 text-[15px] leading-snug shadow-[0_1px_1.5px_rgba(15,23,42,0.14)] ${
+                    className={`relative px-3 py-1.5 text-[0.9375rem] leading-snug shadow-[0_1px_1.5px_rgba(15,23,42,0.14)] ${
                       out
                         ? `rounded-2xl bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white ${grouped ? "" : "bubble-tail-out rounded-tr-none"}`
                         : `rounded-2xl bg-white text-slate-800 dark:bg-[#26272c] dark:text-slate-100 ${grouped ? "" : "bubble-tail-in rounded-tl-none"}`
@@ -2195,7 +2333,7 @@ export default function Dialer() {
                     <p className="flow-root whitespace-pre-wrap [overflow-wrap:anywhere]">
                       {linkify(m.body)}
                       <span
-                        className={`float-right ml-2.5 mt-[7px] inline-flex select-none items-center gap-1 text-[10px] leading-none ${out ? "text-white/75" : "text-slate-400"}`}
+                        className={`float-right ml-2.5 mt-[7px] inline-flex select-none items-center gap-1 text-[0.625rem] leading-none ${out ? "text-white/75" : "text-slate-400"}`}
                       >
                         <span>{new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                         {out && <MessageTicks status={m.status} />}
@@ -2231,7 +2369,12 @@ export default function Dialer() {
               onKeyDown={(e) => {
                 // Enter sends on a computer; on a phone it's a new line, since
                 // the on-screen keyboard has no Shift.
-                if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  settings.enterToSend &&
+                  window.matchMedia("(hover: hover) and (pointer: fine)").matches
+                ) {
                   e.preventDefault();
                   e.currentTarget.form?.requestSubmit();
                 }
@@ -2243,7 +2386,7 @@ export default function Dialer() {
               aria-label="Message"
             />
             {messageBody.length > MAX_SMS_LENGTH - 200 && (
-              <span className="pointer-events-none absolute -top-4 right-3 text-[10px] text-slate-400">
+              <span className="pointer-events-none absolute -top-4 right-3 text-[0.625rem] text-slate-400">
                 {messageBody.length}/{MAX_SMS_LENGTH}
               </span>
             )}
@@ -2339,15 +2482,15 @@ export default function Dialer() {
                   >
                     <Avatar label={name ?? c.number} size="lg" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[15px] font-semibold text-slate-800 dark:text-slate-100">{name ?? c.number}</p>
-                      <p className="mt-0.5 truncate text-[13px] text-slate-500 dark:text-slate-400">
+                      <p className="truncate text-[0.9375rem] font-semibold text-slate-800 dark:text-slate-100">{name ?? c.number}</p>
+                      <p className="mt-0.5 truncate text-[0.8125rem] text-slate-500 dark:text-slate-400">
                         {c.lastDirection === "outbound" && <span className="text-slate-400 dark:text-slate-500">You: </span>}
                         {c.lastBody}
                       </p>
                     </div>
                   </button>
                   <div className="flex shrink-0 flex-col items-end gap-1.5 self-stretch py-0.5">
-                    <span className="text-[11px] text-slate-400 dark:text-slate-500">{relativeDay(c.lastAt)}</span>
+                    <span className="text-[0.6875rem] text-slate-400 dark:text-slate-500">{relativeDay(c.lastAt)}</span>
                     <button
                       type="button"
                       onClick={() => handleDeleteConversation(c.number)}
@@ -2373,7 +2516,7 @@ export default function Dialer() {
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold tracking-wide text-slate-900 dark:text-white">Contacts</h1>
         <div className="flex items-center gap-2">
-          {contactsLoading && <span className="text-[10px] text-slate-400 dark:text-slate-500">syncing…</span>}
+          {contactsLoading && <span className="text-[0.625rem] text-slate-400 dark:text-slate-500">syncing…</span>}
           <button
             type="button"
             onClick={() => {
@@ -2436,8 +2579,8 @@ export default function Dialer() {
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <Avatar label={c.name} size="lg" />
               <div className="min-w-0">
-                <p className="truncate text-[15px] font-semibold text-slate-800 dark:text-slate-100">{c.name}</p>
-                <p className="mt-0.5 truncate text-[13px] text-slate-500 dark:text-slate-400">{c.number}</p>
+                <p className="truncate text-[0.9375rem] font-semibold text-slate-800 dark:text-slate-100">{c.name}</p>
+                <p className="mt-0.5 truncate text-[0.8125rem] text-slate-500 dark:text-slate-400">{c.number}</p>
               </div>
             </div>
             <div className="flex shrink-0 gap-1.5">
@@ -2831,7 +2974,7 @@ export default function Dialer() {
                         type="button"
                         onClick={() => handleToggleHold(p.callSid, !p.onHold)}
                         disabled={callActionBusy}
-                        className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500 hover:text-[#C0272D] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400"
+                        className="shrink-0 text-[0.6875rem] font-semibold uppercase tracking-wide text-slate-500 hover:text-[#C0272D] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400"
                       >
                         {p.onHold ? "Resume" : "Hold"}
                       </button>
@@ -2915,16 +3058,27 @@ export default function Dialer() {
           <PeopleIcon className="h-5 w-5" />
           Contacts
         </button>
-        <div className="mt-auto flex flex-col items-center gap-2">
+        <div className="mt-auto flex flex-col items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              playTap();
+              setSettingsOpen(true);
+            }}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-all hover:bg-white/70 active:scale-90 dark:text-slate-400 dark:hover:bg-white/10"
+            aria-label="Settings"
+          >
+            <GearIcon className="h-5 w-5" />
+          </button>
           <button
             type="button"
             onClick={() => {
               playTap();
               setProfileOpen(true);
             }}
-            aria-label="Profile and settings"
+            aria-label="Profile"
           >
-            <Avatar label={signedInLabel || signedInUsername} photoUrl={avatarUrl} size="lg" />
+            <AvatarWithStatus label={signedInLabel || signedInUsername} photoUrl={avatarUrl} size="lg" status={status} />
           </button>
         </div>
       </nav>
@@ -2933,16 +3087,29 @@ export default function Dialer() {
       <main className="relative flex min-w-0 flex-1 flex-col">
         <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-4 lg:hidden">
           <Image src="/ethixweb-logo.png" alt="Ethixweb" width={120} height={20} className="h-4 w-auto dark:invert" />
-          <button
-            type="button"
-            onClick={() => {
-              playTap();
-              setProfileOpen(true);
-            }}
-            aria-label="Profile and settings"
-          >
-            <Avatar label={signedInLabel || signedInUsername} photoUrl={avatarUrl} size="md" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                playTap();
+                setSettingsOpen(true);
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
+              aria-label="Settings"
+            >
+              <GearIcon className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                playTap();
+                setProfileOpen(true);
+              }}
+              aria-label="Profile"
+            >
+              <AvatarWithStatus label={signedInLabel || signedInUsername} photoUrl={avatarUrl} size="md" status={status} />
+            </button>
+          </div>
         </div>
 
         <div className="hidden items-center px-8 pb-1 pt-6 lg:flex">
@@ -3032,6 +3199,28 @@ export default function Dialer() {
       )}
 
 
+      {settingsOpen && (
+        <SettingsPanel
+          settings={settings}
+          onChange={(patch) => {
+            playTap();
+            updateSettings(patch);
+          }}
+          name={signedInLabel || signedInUsername}
+          callerId={callerId}
+          avatarUrl={avatarUrl}
+          status={status}
+          about={about}
+          onEditProfile={() => {
+            setSettingsOpen(false);
+            setProfileOpen(true);
+          }}
+          onSignOut={handleSignOut}
+          signOutDisabled={canHangUp}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
       {/* Profile panel */}
       {profileOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-[fade-in_0.2s_ease-out]">
@@ -3045,7 +3234,7 @@ export default function Dialer() {
 
             <div className="mt-4 flex flex-col items-center">
               <div className="relative">
-                <Avatar label={signedInLabel || signedInUsername} photoUrl={avatarUrl} size="xl" />
+                <AvatarWithStatus label={signedInLabel || signedInUsername} photoUrl={avatarUrl} size="xl" status={status} />
                 <button
                   type="button"
                   onClick={() => avatarInputRef.current?.click()}
@@ -3065,6 +3254,11 @@ export default function Dialer() {
               </div>
               <p className="mt-3 text-base font-medium text-slate-900 dark:text-white">{signedInLabel || signedInUsername}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">{callerId}</p>
+              {status && (
+                <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+                  {status.emoji} {status.text}
+                </p>
+              )}
               {avatarUploading && <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Uploading…</p>}
               {avatarError && <p className={`mt-1 ${COMPACT_ERROR_CLASS}`}>{avatarError}</p>}
               {avatarUrl && !avatarUploading && (
@@ -3099,6 +3293,107 @@ export default function Dialer() {
               </div>
             </div>
 
+            <div className="mt-5 border-t border-slate-900/5 pt-4 dark:border-white/5">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Status</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {STATUS_PRESETS.map((preset) => {
+                  const active = status?.text === preset.text && status?.emoji === preset.emoji;
+                  return (
+                    <button
+                      key={preset.text}
+                      type="button"
+                      onClick={() => {
+                        playTap();
+                        void saveProfile({ status: active ? null : preset });
+                      }}
+                      aria-pressed={active}
+                      className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-all active:scale-95 ${
+                        active
+                          ? "border-transparent bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[0_6px_14px_-6px_rgba(192,39,45,0.7)]"
+                          : "border-slate-900/10 bg-white/60 text-slate-700 hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                      }`}
+                    >
+                      {preset.emoji} {preset.text}
+                    </button>
+                  );
+                })}
+              </div>
+              <form
+                className="mt-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const text = customStatusText.trim();
+                  if (!text) return;
+                  playTap();
+                  void saveProfile({ status: { emoji: customStatusEmoji, text } });
+                  setCustomStatusText("");
+                }}
+              >
+                <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Status emoji">
+                  {MOOD_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      role="radio"
+                      aria-checked={customStatusEmoji === emoji}
+                      aria-label={`Use ${emoji}`}
+                      onClick={() => setCustomStatusEmoji(emoji)}
+                      className={`flex h-8 w-8 items-center justify-center rounded-full text-base transition-all active:scale-90 ${
+                        customStatusEmoji === emoji ? "bg-[#C0272D]/15 ring-2 ring-[#C0272D]" : "hover:bg-slate-900/5 dark:hover:bg-white/10"
+                      }`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    value={customStatusText}
+                    onChange={(e) => setCustomStatusText(e.target.value)}
+                    maxLength={MAX_STATUS_TEXT_LENGTH}
+                    placeholder="Or write your own status"
+                    className={`flex-1 ${COMPACT_INPUT_CLASS}`}
+                    aria-label="Custom status"
+                  />
+                  <button type="submit" disabled={!customStatusText.trim()} className={`${MINI_ICON_BUTTON_CLASS} !h-9 !w-auto px-3 text-xs font-semibold disabled:opacity-40`}>
+                    Set
+                  </button>
+                </div>
+              </form>
+              {status && (
+                <button
+                  type="button"
+                  onClick={() => void saveProfile({ status: null })}
+                  className="mt-2 text-xs font-medium text-[#C0272D] hover:underline"
+                >
+                  Clear status
+                </button>
+              )}
+
+              <p className="mt-4 text-xs font-medium text-slate-500 dark:text-slate-400">About</p>
+              <div className="relative mt-2">
+                <input
+                  value={aboutDraft ?? about}
+                  onChange={(e) => setAboutDraft(e.target.value)}
+                  onBlur={() => {
+                    if (aboutDraft !== null && aboutDraft.trim() !== about) void saveProfile({ about: aboutDraft });
+                    setAboutDraft(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                  maxLength={MAX_ABOUT_LENGTH}
+                  placeholder="Add a short about line"
+                  className={COMPACT_INPUT_CLASS}
+                  aria-label="About"
+                />
+                <span className="pointer-events-none absolute -top-4 right-1 text-[0.625rem] text-slate-400">
+                  {(aboutDraft ?? about).length}/{MAX_ABOUT_LENGTH}
+                </span>
+              </div>
+              {profileSaveError && <p className={`mt-1.5 ${COMPACT_ERROR_CLASS}`}>{profileSaveError}</p>}
+            </div>
+
             {biometricSupported && (
               <div className="mt-5 border-t border-slate-900/5 pt-4 dark:border-white/5">
                 <div className="flex items-center justify-between">
@@ -3116,7 +3411,7 @@ export default function Dialer() {
                   </button>
                 </div>
                 {deviceSetupMessage && (
-                  <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">{deviceSetupMessage}</p>
+                  <p className="mt-1.5 text-[0.6875rem] text-slate-500 dark:text-slate-400">{deviceSetupMessage}</p>
                 )}
                 {devices.length > 0 && (
                   <div className="mt-2 space-y-1.5">
@@ -3143,9 +3438,21 @@ export default function Dialer() {
 
             <button
               type="button"
+              onClick={() => {
+                playTap();
+                setProfileOpen(false);
+                setSettingsOpen(true);
+              }}
+              className={`${SMALL_BUTTON_CLASS} mt-5`}
+            >
+              Settings
+            </button>
+
+            <button
+              type="button"
               onClick={handleSignOut}
               disabled={canHangUp}
-              className={`${SMALL_BUTTON_CLASS} mt-5 !bg-none !bg-transparent !text-[#C0272D] !shadow-none disabled:cursor-not-allowed disabled:opacity-40`}
+              className={`${SMALL_BUTTON_CLASS} mt-2 !bg-none !bg-transparent !text-[#C0272D] !shadow-none disabled:cursor-not-allowed disabled:opacity-40`}
             >
               Sign out
             </button>

@@ -2,7 +2,7 @@
 
 A simple website where your employees each sign in with their own username
 and password, type a phone number, click **Call**, and talk to the client
-through their laptop's microphone — using their own Twilio number as the
+through their laptop's microphone, using their own Twilio number as the
 caller ID. No SIM card needed.
 
 This is one shared dialer app serving multiple people. Amar signs in and
@@ -37,10 +37,10 @@ Follow it top to bottom.
 5. Twilio dials the client. The caller talks through their laptop
    mic/speakers.
 
-Everyone shares the same TwiML App and Voice Request URL — nothing in
+Everyone shares the same TwiML App and Voice Request URL, nothing in
 Twilio Console needs to be configured per person, only the phone number
-itself needs Voice enabled. Your existing setup — the Twilio number
-forwarding incoming calls to India — is a completely separate configuration
+itself needs Voice enabled. Your existing setup, the Twilio number
+forwarding incoming calls to India, is a completely separate configuration
 and is never touched by this app.
 
 ## 1. Install and configure for local testing
@@ -52,11 +52,11 @@ npm install
 Open `.env.local` in this project (already partly filled in for you) and
 add the one remaining value:
 
-- **`TWILIO_AUTH_TOKEN`** — in the [Twilio Console](https://console.twilio.com),
+- **`TWILIO_AUTH_TOKEN`**: in the [Twilio Console](https://console.twilio.com),
   go to **Settings → Account settings → Account details & security**, and
   click **View** next to **Auth Token**. Copy it in.
 
-Leave `PUBLIC_BASE_URL` empty for now — you'll fill that in after
+Leave `PUBLIC_BASE_URL` empty for now, you'll fill that in after
 deploying (Section 3).
 
 The full, current list of variables and what each one is for is in
@@ -68,11 +68,11 @@ The full, current list of variables and what each one is for is in
 npm run dev
 ```
 
-Open `http://localhost:3000`. You'll see the lock screen — enter one of the
+Open `http://localhost:3000`. You'll see the lock screen, enter one of the
 username/password pairs from `APP_USERS` in `.env.local`. You can fully test
 the lock screen, the dialer UI, and the microphone prompt this way.
 
-**You cannot place a real call from `localhost`** — Twilio needs to reach
+**You cannot place a real call from `localhost`**, Twilio needs to reach
 `/api/voice` over the public internet, and your laptop isn't on the public
 internet. Real call testing happens after deploying to Vercel (next
 section). If you want to test locally anyway, run a tunnel:
@@ -89,13 +89,13 @@ you've deployed.
 
 ## 3. Deploy to Vercel
 
-No config file needed — just:
+No config file needed, just:
 
-1. Push this repository to GitHub (already set up as `origin` — see the
+1. Push this repository to GitHub (already set up as `origin`, see the
    chat for the exact commands used, or run `git push origin main` once
    you're authenticated).
 2. Go to [vercel.com/new](https://vercel.com/new), click **Import** next
-   to the `Business-Caller` GitHub repo. Vercel auto-detects Next.js —
+   to the `Business-Caller` GitHub repo. Vercel auto-detects Next.js,
    don't change any build settings.
 3. Before clicking **Deploy**, expand **Environment Variables** and add
    every variable from [`.env.example`](.env.example) with its real value
@@ -130,7 +130,7 @@ Click **Save**.
    (e.g. Amar's calls show `+1 (206) 452-3433`, Prateek's show
    `+1 (872) 278-4999`).
 4. If it doesn't work, check **Twilio Console → Monitor → Logs → Calls**
-   and **Errors** for the specific reason — the most common first-time
+   and **Errors** for the specific reason, the most common first-time
    issues are the Request URL not matching `PUBLIC_BASE_URL` exactly, or
    the destination country being blocked under **Voice → Settings → Geo
    Permissions**.
@@ -138,23 +138,23 @@ Click **Save**.
 ## 6. Give each person their login
 
 Send each person the same Vercel URL plus their own username/password from
-`APP_USERS`. That's all they need — no installs, no SIM card, just a laptop
+`APP_USERS`. That's all they need, no installs, no SIM card, just a laptop
 with a mic and a browser. Nobody needs to know anyone else's credentials;
 each login only ever sees its own number's calls, texts, and Phone Book.
 
 **Note on SMS for the two new numbers:** `+18722784999` and `+17207832385`
-currently show "Messaging disabled — Complete A2P registration" in Twilio
+currently show "Messaging disabled, Complete A2P registration" in Twilio
 Console. Voice/calling works immediately once `APP_USERS` is deployed, but
 sending SMS from those two numbers will fail with a Twilio error until A2P
-10DLC registration is completed for them — that's a Twilio Console/
+10DLC registration is completed for them, that's a Twilio Console/
 compliance step, not something this app's code can work around.
 
 ## Extra features
 
-- **Calls / Texts / Contacts navigation** — a Google Voice-style layout: a
+- **Calls / Texts / Contacts navigation**: a Google Voice-style layout: a
   nav rail on desktop (left side) and a bottom tab bar on mobile switch
   between the three main views, each full-screen with its own search box.
-- **Dial pad** — on desktop, it's docked permanently on the right (there's
+- **Dial pad**: on desktop, it's docked permanently on the right (there's
   space to spare), always ready with no button to find first. On mobile,
   a floating **+** button on the Calls tab opens it as an overlay, which
   stays open through the call itself until it's hung up. Either way it's a
@@ -162,7 +162,7 @@ compliance step, not something this app's code can work around.
   letters under each digit, a live "who is this" contact-match preview as
   you type, and - once connected - a native-style call screen (large
   avatar, circular Mute/Keypad buttons, one big round hang-up button).
-- **Hold, Add Call, and Merge** — once connected, the call screen offers
+- **Hold, Add Call, and Merge**: once connected, the call screen offers
   **Hold** (puts the other party on hold with a spoken "please wait"
   announcement, looping until resumed), **Add call** (dials a second number
   into the same call without dropping the first), and **Merge** (brings
@@ -178,39 +178,54 @@ compliance step, not something this app's code can work around.
   the far leg was moved. If an upgrade ever fails midway, the far leg is
   ended rather than left stranded (and billing) alone in a conference.
   Requires `PUBLIC_BASE_URL` (already set); no other new env vars.
-- **Call history** — the Calls tab lists every past call (pulled live from
+- **Call history**: the Calls tab lists every past call (pulled live from
   Twilio's own Call records via `/api/calls`, most recent first) with who
   it was with, incoming/outgoing/missed status, duration, and when. Tap a
   row to call that number again, or use the message/delete icons on the
   right. Deleting a call permanently removes it from Twilio's records via
   its own delete, same as messages.
-- **Profile photos** — tap your avatar (nav rail on desktop, top-right on
+- **Profile photos**: tap your avatar (nav rail on desktop, top-right on
   mobile) to open your profile: upload a real photo (resized/compressed in
-  the browser before it's ever sent, stored in Vercel Blob — see
+  the browser before it's ever sent, stored in Vercel Blob, see
   `BLOB_READ_WRITE_TOKEN` below), or pick one of five preset "generic
   person" avatars, each in a different on-brand color (no Blob storage
   needed for these - just a small reference saved to Twilio Sync). Anyone
   who picks neither gets an automatically colored initials avatar instead,
-  the same way Gmail/Google Voice do — contacts, call history, and message
+  the same way Gmail/Google Voice do, contacts, call history, and message
   threads all use the same avatars.
-- **Stays signed in for 14 days** — unlocking (password or Face ID/Touch
+- **Stays signed in for 14 days**: unlocking (password or Face ID/Touch
   ID) is remembered in the browser for 14 days, refreshed every time the
   app is opened while still valid. So in practice, opening it at least
   once every 14 days keeps it signed in indefinitely; leave it untouched
   longer than that and it asks to unlock again. **Sign out** is in the
   profile panel and ends the session immediately regardless of this.
-- **Microphone / speaker picker** — appears in the call overlay, above the
+- **Microphone / speaker picker**: appears in the call overlay, above the
   phone number field. Bluetooth headsets show up automatically once paired
   with the OS; no extra setup.
-- **Mute + keypad** — appear once a call connects, for muting and for
+- **Mute + keypad**: appear once a call connects, for muting and for
   entering digits into an IVR.
-- **Phone Book (Contacts tab)** — contacts are stored server-side in a
+- **Phone Book (Contacts tab)**: contacts are stored server-side in a
   per-person Twilio Sync Document (see `TWILIO_SYNC_SERVICE_SID` below), so
-  each person's list shows up on every device they unlock the dialer from —
-  add one on a laptop, it's there on the phone too — without being visible
+  each person's list shows up on every device they unlock the dialer from,
+  add one on a laptop, it's there on the phone too, without being visible
   to anyone else signed in with a different login. A "New contact" button
   in the header opens the add form, so the list keeps the whole screen.
-- **Chat view (phones)** — opening a conversation on a phone shows a
+- **Settings** (gear icon, top right on phones, bottom of the nav rail on
+  desktop): Theme (System, Light, Dark; System follows the device live), Text
+  size (Small, Medium, Large, Extra large; it scales the whole app), Chat
+  wallpaper (Dots, Blush, Plain) with a live preview, "Enter is send" for
+  computer keyboards, tap sounds and vibration switches, and Sign out. These
+  are stored per device in the browser (`dialer_settings`), so a phone and a
+  laptop can look different. The saved theme and size are applied before the
+  first paint, so there is no light flash in dark mode.
+- **Status and About** (Profile): pick a mood status (Available, At work, In a
+  meeting, On a call, Driving, Away, Do not disturb, Out sick) or write your
+  own with an emoji, and add a short About line (100 characters). The status
+  emoji shows as a badge on your picture. These belong to the person, so they
+  are saved on the server in the same per-user Sync profile document as the
+  photo (`POST /api/profile`), and follow you to every device. Saving one never
+  overwrites the other, or the photo.
+- **Chat view (phones)**: opening a conversation on a phone shows a
   full-screen, WhatsApp-style chat: name/avatar and a Call button pinned at
   the top, message bubbles with day separators and delivery ticks (one tick
   sent, two delivered, "Not delivered" when the carrier rejected it), and
@@ -228,37 +243,37 @@ compliance step, not something this app's code can work around.
   unbroken text wrap inside the bubble instead of spilling out. On tablets
   the chat is a centred column; Escape clears a selection on desktop. In the Texts list, "New
   message" opens the number box.
-- **Messages/SMS (Texts tab)** — an inbox-style list of every past
+- **Messages/SMS (Texts tab)**: an inbox-style list of every past
   conversation (pulled from Twilio's real message history, most recent
   first), tap one to open the full thread with a back button to return to
   the list, or type a new number to start a fresh conversation. Threads
   poll `/api/messages` every 5 seconds, which reads Twilio's actual Message
   history for that number (Twilio records every inbound and outbound SMS
   on the account automatically, regardless of any webhook), so a client's
-  reply shows up on its own — nothing to configure for that part. If a
+  reply shows up on its own, nothing to configure for that part. If a
   number matches a saved contact, their name shows instead of the raw
   number.
-- **Deleting messages/conversations/calls** — the small trash icon on a
+- **Deleting messages/conversations/calls**: the small trash icon on a
   row deletes it. This calls Twilio's own delete on the underlying
   resource, so it's a real, permanent removal from Twilio's records (not
-  just hidden in this UI) — there's a confirmation prompt first since it
+  just hidden in this UI), there's a confirmation prompt first since it
   can't be undone.
 - Sending SMS requires **SMS capability enabled** (and, for a new number,
   A2P 10DLC registration completed) on that person's own number in the
-  Twilio Console — if it's off or unregistered, sends fail with a clear
+  Twilio Console, if it's off or unregistered, sends fail with a clear
   error. No extra env vars needed; `/api/sms` and `/api/messages` reuse the
   same credentials as everything else, just scoped to whichever number the
   signed-in user owns.
-- **App icon** — a custom icon (a phone glyph on the same near-black/crimson
+- **App icon**: a custom icon (a phone glyph on the same near-black/crimson
   brand gradient) is wired up for the browser tab, iOS/Android "Add to
   Home Screen," and Chrome's install prompt. Installed from the home
   screen, it opens full-screen with no browser address bar, like a real
   app.
-- **Face ID / Touch ID / Windows Hello** — on a browser and device that
+- **Face ID / Touch ID / Windows Hello**: on a browser and device that
   supports a platform authenticator, the lock screen offers "Unlock with
   Face ID / Touch ID" as an alternative to typing the password every time.
   This is real WebAuthn (passkey) authentication via
-  `@simplewebauthn/server` and `@simplewebauthn/browser` — not a password
+  `@simplewebauthn/server` and `@simplewebauthn/browser`, not a password
   autofill shim:
   - **Setup**: sign in normally with username + password once, open your
     profile panel (tap your avatar), then click **"+ Add this device"**.
@@ -269,7 +284,7 @@ compliance step, not something this app's code can work around.
   - **Under the hood**: registering a new credential still requires the
     real username and password (so a stranger who finds the URL can't
     register their own face as a backdoor onto someone else's number).
-    Signing in with a registered credential does not — the verified
+    Signing in with a registered credential does not, the verified
     biometric signature itself is the proof, and on success the server
     hands back that user's real username and password, which the app then
     uses exactly as if they had been typed.
@@ -277,19 +292,19 @@ compliance step, not something this app's code can work around.
     device registered to the signed-in user, with a remove button, in case
     a device is lost or no longer used.
   - Credentials are stored in the same Twilio Sync Service as the Phone
-    Book, one document per username (`webauthn_<username>`) — no new env
+    Book, one document per username (`webauthn_<username>`), no new env
     vars, and one person's devices are never visible to another.
 
 ### Heads up: Twilio's default SMS auto-reply
 
 Your number currently has **no messaging webhook configured**, so Twilio
 auto-sends its generic fallback reply ("Thanks for the message... Reply
-HELP for help...") to every inbound text — this happens outside of and
+HELP for help...") to every inbound text, this happens outside of and
 regardless of this app. If you don't want clients receiving that canned
 reply, go to Twilio Console → **Phone Numbers → your number → Messaging**
 and either point the "A message comes in" webhook at a URL that returns
 empty TwiML, or clear whatever's causing the fallback. This app doesn't
-touch that setting — it wasn't asked to — but it's worth knowing about
+touch that setting, it wasn't asked to, but it's worth knowing about
 since it's live right now.
 
 ## Environment variables reference
@@ -306,7 +321,7 @@ since it's live right now.
 | `PUBLIC_BASE_URL` | Your deployed Vercel URL, no trailing slash | No |
 | `BLOB_READ_WRITE_TOKEN` | Vercel dashboard → Project → Storage → create a Blob store and attach it (Vercel adds this automatically) | **Yes**, but only for profile photo upload/removal |
 
-**Never** commit `.env.local` (it already can't be — see `.gitignore`), put
+**Never** commit `.env.local` (it already can't be, see `.gitignore`), put
 any of the "Yes" rows in frontend code, or paste them anywhere public.
 
 ## Project layout
@@ -350,7 +365,7 @@ lib/
   profileStore.ts          Reads/writes a profile doc (currently just avatarUrl), one per username
   webauthn.ts              Shared WebAuthn types + Relying Party config (derived from PUBLIC_BASE_URL)
   webauthnStore.ts         Reads/writes registered credentials, one Sync document per username
-.env.example               Template — copy to .env.local, never commit the real one
+.env.example               Template, copy to .env.local, never commit the real one
 ```
 
 ## Architecture

@@ -250,7 +250,7 @@ export async function ensureConference(
       .catch(() => {});
     await deleteConferenceRecord(client, browserCallSid);
     console.error("[lib/conference] Upgrade failed, far leg ended to avoid a stranded call:", err);
-    throw new ConferenceUserError("Couldn't put the call on hold - the call was ended. Please call again.");
+    throw new ConferenceUserError("Couldn't put the call on hold because the call was ended. Please call again.");
   }
 
   return record;

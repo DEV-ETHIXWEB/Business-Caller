@@ -78,7 +78,7 @@ function initialsFor(label: string): string {
 }
 
 const SIZE_CLASSES: Record<"sm" | "md" | "lg" | "xl", string> = {
-  sm: "h-7 w-7 text-[10px]",
+  sm: "h-7 w-7 text-[0.625rem]",
   md: "h-9 w-9 text-xs",
   lg: "h-12 w-12 text-sm",
   xl: "h-20 w-20 text-xl",

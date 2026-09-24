@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Dark mode is a class on <html> (set from the person's Theme setting, or
+   from the device when it is on "System"), not just the OS media query. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -12,11 +16,10 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  color-scheme: dark;
 }
 
 body {
@@ -101,6 +104,20 @@ html {
   text-size-adjust: 100%;
 }
 
+/* Settings > Text size. Everything is sized in rem, so this scales the
+   whole app, not just the messages. */
+html[data-text-size="small"] {
+  font-size: 87.5%;
+}
+
+html[data-text-size="large"] {
+  font-size: 112.5%;
+}
+
+html[data-text-size="xlarge"] {
+  font-size: 125%;
+}
+
 body {
   /* No rubber-banding / pull-to-refresh bounce revealing the page behind. */
   overscroll-behavior: none;
@@ -124,7 +141,7 @@ select {
   input,
   textarea,
   select {
-    font-size: 16px !important;
+    font-size: max(16px, 1rem) !important;
   }
 }
 
@@ -138,12 +155,26 @@ select {
   background-size: 26px 26px;
 }
 
-@media (prefers-color-scheme: dark) {
-  .chat-wallpaper {
-    background-image:
-      radial-gradient(circle at 2px 2px, rgba(255, 255, 255, 0.05) 1.2px, transparent 1.4px),
-      radial-gradient(circle at 13px 13px, rgba(224, 85, 92, 0.06) 1px, transparent 1.2px);
-  }
+.dark .chat-wallpaper {
+  background-image:
+    radial-gradient(circle at 2px 2px, rgba(255, 255, 255, 0.05) 1.2px, transparent 1.4px),
+    radial-gradient(circle at 13px 13px, rgba(224, 85, 92, 0.06) 1px, transparent 1.2px);
+}
+
+/* Chat wallpaper choices (Settings > Chat wallpaper). */
+html[data-wallpaper="plain"] .chat-wallpaper {
+  background-image: none;
+}
+
+html[data-wallpaper="blush"] .chat-wallpaper {
+  /* One smooth wash, not the 26px dot tile the default wallpaper repeats. */
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-image: linear-gradient(180deg, rgba(192, 39, 45, 0.07), rgba(245, 239, 238, 0.6) 55%, rgba(192, 39, 45, 0.05));
+}
+
+html.dark[data-wallpaper="blush"] .chat-wallpaper {
+  background-image: linear-gradient(180deg, rgba(192, 39, 45, 0.16), rgba(12, 13, 16, 0) 55%, rgba(192, 39, 45, 0.1));
 }
 
 /* The little tail on the first bubble of each run of messages. */
@@ -168,8 +199,6 @@ select {
   clip-path: polygon(0 0, 100% 0, 100% 100%);
 }
 
-@media (prefers-color-scheme: dark) {
-  .bubble-tail-in::after {
-    background: #26272c;
-  }
+.dark .bubble-tail-in::after {
+  background: #26272c;
 }

@@ -40,12 +40,21 @@ export const viewport: Viewport = {
   interactiveWidget: "resizes-content",
 };
 
+// Runs before first paint so the saved theme, text size and wallpaper are
+// already on <html> when the page appears (no light flash in dark mode).
+// Mirrors applySettings() in lib/settings.ts.
+const SETTINGS_BOOT_SCRIPT = `(function(){try{var s=JSON.parse(localStorage.getItem("dialer_settings")||"{}");var r=document.documentElement;var d=s.theme==="dark"||((s.theme===undefined||s.theme==="system")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)r.classList.add("dark");r.dataset.textSize=s.textSize||"medium";r.dataset.wallpaper=s.wallpaper||"dots";}catch(e){}})();`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: SETTINGS_BOOT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
