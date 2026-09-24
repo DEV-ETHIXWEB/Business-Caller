@@ -219,7 +219,12 @@ compliance step, not something this app's code can work around.
   closes the chat. Nothing zooms when you tap the box: every field is 16px
   on phones (iOS Safari zooms into anything smaller) and the page scale is
   locked. On desktop the same chat sits inside the Texts panel, and Enter
-  sends. Tap a message to reveal Delete.
+  sends. Bubbles have WhatsApp-style tails, the time sits inside the bubble,
+  and a faint dotted wallpaper sits behind them. Tap a message to select it:
+  the header turns into a bar with Copy and Delete. Scroll up to read
+  history and the chat stays put (background refreshes never yank you down);
+  a round button jumps back to the latest message. In the Texts list, "New
+  message" opens the number box.
 - **Messages/SMS (Texts tab)** — an inbox-style list of every past
   conversation (pulled from Twilio's real message history, most recent
   first), tap one to open the full thread with a back button to return to

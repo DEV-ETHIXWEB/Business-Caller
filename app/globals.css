@@ -127,3 +127,49 @@ select {
     font-size: 16px !important;
   }
 }
+
+/* --- WhatsApp-style chat ------------------------------------------------- */
+
+/* Faint dotted wallpaper behind the messages, tinted with the brand red. */
+.chat-wallpaper {
+  background-image:
+    radial-gradient(circle at 2px 2px, rgba(192, 39, 45, 0.07) 1.2px, transparent 1.4px),
+    radial-gradient(circle at 13px 13px, rgba(192, 39, 45, 0.045) 1px, transparent 1.2px);
+  background-size: 26px 26px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chat-wallpaper {
+    background-image:
+      radial-gradient(circle at 2px 2px, rgba(255, 255, 255, 0.05) 1.2px, transparent 1.4px),
+      radial-gradient(circle at 13px 13px, rgba(224, 85, 92, 0.06) 1px, transparent 1.2px);
+  }
+}
+
+/* The little tail on the first bubble of each run of messages. */
+.bubble-tail-out::after,
+.bubble-tail-in::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 11px;
+}
+
+.bubble-tail-out::after {
+  right: -7px;
+  background: #e0555c;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+.bubble-tail-in::after {
+  left: -7px;
+  background: #ffffff;
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .bubble-tail-in::after {
+    background: #26272c;
+  }
+}

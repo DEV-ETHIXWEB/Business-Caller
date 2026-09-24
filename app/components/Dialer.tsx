@@ -216,6 +216,15 @@ function PlusIcon({ className }: { className?: string }) {
   );
 }
 
+function CopyIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </svg>
+  );
+}
+
 function ArrowLeftIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -721,6 +730,8 @@ export default function Dialer() {
   const [contactFormError, setContactFormError] = useState<string | null>(null);
 
   const [messageTo, setMessageTo] = useState("");
+  const [scrolledUp, setScrolledUp] = useState(false);
+  const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [messageBody, setMessageBody] = useState("");
   const [pendingMessages, setPendingMessages] = useState<ThreadMessage[]>([]);
   const [selectedMessageSid, setSelectedMessageSid] = useState<string | null>(null);
@@ -739,6 +750,7 @@ export default function Dialer() {
   const [activeThread, setActiveThread] = useState<string | null>(null);
   const threadContactName = activeThread ? contacts.find((c) => c.number === activeThread)?.name : undefined;
 
+  const stickToBottomRef = useRef(true);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const vv = useVisualViewport();
   const viewportHeight = vv?.height ?? 0;
@@ -746,10 +758,31 @@ export default function Dialer() {
   // Keep the conversation pinned to the latest message as new ones arrive
   // from polling or are sent - and when the keyboard opens/closes, which
   // resizes the visible area.
+  // ...but only while you're already at the bottom - polling must never yank
+  // you down while you're reading older messages.
   useEffect(() => {
     const el = threadScrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [messageLog, pendingMessages, viewportHeight, activeThread, isDesktop]);
+
+  // A freshly opened chat always starts at the latest message.
+  useEffect(() => {
+    stickToBottomRef.current = true;
+  }, [activeThread]);
+
+  function handleThreadScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    const away = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = away < 80;
+    setScrolledUp(away > 240);
+  }
+
+  function jumpToLatest() {
+    const el = threadScrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current = true;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }
 
   // The message box grows with what's typed (up to a few lines), like a
   // messaging app, rather than staying a fixed-height box with its own scroll.
@@ -1752,6 +1785,7 @@ export default function Dialer() {
       return;
     }
     setMessageTo(normalized);
+    setNewMessageOpen(false);
     setActiveThread(normalized);
   }
 
@@ -1760,6 +1794,7 @@ export default function Dialer() {
   // once Twilio has it. If the send fails, the text goes back in the box so
   // nothing typed is lost.
   async function handleSendMessage(e: React.FormEvent) {
+    stickToBottomRef.current = true;
     e.preventDefault();
     playTap();
     setSmsError(null);
@@ -1984,6 +2019,7 @@ export default function Dialer() {
     (p) => !messageLog.some((m) => m.direction === "outbound" && m.body === p.body && m.at >= p.at - 10000),
   );
   const chatMessages = [...messageLog, ...visiblePending];
+  const selectedMessage = selectedMessageSid ? chatMessages.find((m) => m.sid === selectedMessageSid) : undefined;
 
   function closeChat() {
     playTap();
@@ -2006,6 +2042,43 @@ export default function Dialer() {
       }
       style={isDesktop ? undefined : { top: vv?.top ?? 0, height: vv?.height ?? "100dvh" }}
     >
+      {selectedMessage ? (
+        <header className="flex shrink-0 items-center gap-1 border-b border-slate-900/5 pb-2 pl-1 pr-2 pt-[max(0.5rem,env(safe-area-inset-top))] animate-[fade-in_0.15s_ease-out] dark:border-white/5 lg:pt-0">
+          <button
+            type="button"
+            onClick={() => setSelectedMessageSid(null)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
+            aria-label="Cancel selection"
+          >
+            <CloseIcon className="h-5 w-5" />
+          </button>
+          <p className="flex-1 pl-1 text-base font-semibold text-slate-900 dark:text-white">1 selected</p>
+          <button
+            type="button"
+            onClick={() => {
+              playTap();
+              void navigator.clipboard?.writeText(selectedMessage.body).catch(() => {});
+              setSelectedMessageSid(null);
+            }}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
+            aria-label="Copy message"
+          >
+            <CopyIcon className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const sid = selectedMessage.sid;
+              setSelectedMessageSid(null);
+              void handleDeleteMessage(sid);
+            }}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-[#C0272D] transition-all active:scale-90 active:bg-[#C0272D]/10"
+            aria-label="Delete message"
+          >
+            <TrashIcon className="h-5 w-5" />
+          </button>
+        </header>
+      ) : (
       <header className="flex shrink-0 items-center gap-1.5 border-b border-slate-900/5 pb-2 pl-1 pr-2 pt-[max(0.5rem,env(safe-area-inset-top))] dark:border-white/5 lg:pt-0">
         <button
           type="button"
@@ -2033,11 +2106,14 @@ export default function Dialer() {
           <PhoneIcon className="h-5 w-5" />
         </button>
       </header>
+      )}
 
+      <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={threadScrollRef}
         onClick={() => setSelectedMessageSid(null)}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 lg:my-2 lg:rounded-2xl lg:border lg:border-white/40 lg:bg-white/20 dark:lg:border-white/5 dark:lg:bg-black/10"
+        onScroll={handleThreadScroll}
+        className="chat-wallpaper min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 lg:my-2 lg:rounded-2xl lg:border lg:border-white/40 lg:bg-white/20 dark:lg:border-white/5 dark:lg:bg-black/10"
       >
         {chatMessages.length === 0 && !messagesLoading && (
           <p className="mt-10 text-center text-sm text-slate-400 dark:text-slate-500">
@@ -2060,46 +2136,47 @@ export default function Dialer() {
                   </span>
                 </div>
               )}
-              <div className={`flex ${out ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2"}`}>
+              <div className={`flex ${out ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2.5"}`}>
                 <div className={`flex max-w-[82%] flex-col lg:max-w-[70%] ${out ? "items-end" : "items-start"}`}>
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
                       if (!isPending) setSelectedMessageSid(selected ? null : m.sid);
                     }}
-                    className={`px-3 py-1.5 text-[15px] leading-snug shadow-[0_1px_2px_rgba(15,23,42,0.12)] ${
+                    className={`relative px-3 py-1.5 text-[15px] leading-snug shadow-[0_1px_1.5px_rgba(15,23,42,0.14)] ${
                       out
-                        ? "rounded-2xl rounded-br-md bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white"
-                        : "rounded-2xl rounded-bl-md border border-white/60 bg-white/90 text-slate-800 dark:border-white/10 dark:bg-white/10 dark:text-slate-100"
-                    } ${selected ? "ring-2 ring-[#C0272D]/40" : ""}`}
+                        ? `rounded-2xl bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white ${grouped ? "" : "bubble-tail-out rounded-tr-none"}`
+                        : `rounded-2xl bg-white text-slate-800 dark:bg-[#26272c] dark:text-slate-100 ${grouped ? "" : "bubble-tail-in rounded-tl-none"}`
+                    } ${selected ? "outline outline-2 outline-offset-2 outline-[#C0272D]/50" : ""}`}
                   >
-                    <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                    <div
-                      className={`mt-0.5 flex items-center justify-end gap-1 text-[10px] ${out ? "text-white/75" : "text-slate-400"}`}
-                    >
-                      <span>{new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                      {out && <MessageTicks status={m.status} />}
-                    </div>
+                    {/* The time floats to the end of the last line (WhatsApp
+                        style), so short messages stay one compact bubble. */}
+                    <p className="flow-root whitespace-pre-wrap break-words">
+                      {m.body}
+                      <span
+                        className={`float-right ml-2.5 mt-[7px] inline-flex select-none items-center gap-1 text-[10px] leading-none ${out ? "text-white/75" : "text-slate-400"}`}
+                      >
+                        <span>{new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                        {out && <MessageTicks status={m.status} />}
+                      </span>
+                    </p>
                   </div>
-                  {selected && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedMessageSid(null);
-                        void handleDeleteMessage(m.sid);
-                      }}
-                      className="mt-1 inline-flex items-center gap-1 rounded-full border border-white/60 bg-white/80 px-2.5 py-1 text-[11px] font-medium text-[#C0272D] shadow-sm dark:border-white/10 dark:bg-white/10"
-                    >
-                      <TrashIcon className="h-3 w-3" />
-                      Delete
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
           );
         })}
+      </div>
+      {scrolledUp && (
+        <button
+          type="button"
+          onClick={jumpToLatest}
+          className="absolute bottom-3 right-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/95 text-slate-600 shadow-[0_8px_20px_-6px_rgba(15,23,42,0.35)] transition-all animate-[pop-in_0.18s_ease-out] active:scale-90 dark:border-white/10 dark:bg-[#1b1c20] dark:text-slate-200"
+          aria-label="Jump to latest message"
+        >
+          <ChevronDownIcon className="h-5 w-5" />
+        </button>
+      )}
       </div>
 
       <div className="shrink-0 border-t border-slate-900/5 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 dark:border-white/5 lg:border-0 lg:px-0 lg:pb-0">
@@ -2147,13 +2224,28 @@ export default function Dialer() {
 
   const textsListBody = (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="truncate text-xl font-semibold tracking-wide text-slate-900 dark:text-white">Texts</h1>
+        <button
+          type="button"
+          onClick={() => {
+            playTap();
+            setNewMessageOpen((open) => !open);
+            setSmsError(null);
+          }}
+          aria-expanded={newMessageOpen}
+          className="flex h-9 items-center gap-1.5 rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] pl-3 pr-3.5 text-xs font-semibold text-white shadow-[0_8px_18px_-8px_rgba(192,39,45,0.7)] transition-all active:scale-95"
+        >
+          <PlusIcon className={`h-3.5 w-3.5 transition-transform ${newMessageOpen ? "rotate-45" : ""}`} />
+          New message
+        </button>
       </div>
 
-          <form onSubmit={handleOpenThread} className="mt-3">
+          {newMessageOpen && (
+          <form onSubmit={handleOpenThread} className="mt-3 animate-[slide-fade-in_0.2s_ease-out]">
             <div className="flex gap-2">
               <input
+                autoFocus
                 type="tel"
                 inputMode="tel"
                 value={messageTo}
@@ -2171,6 +2263,7 @@ export default function Dialer() {
             </div>
             {smsError && <p className={`mt-1.5 ${COMPACT_ERROR_CLASS}`}>{smsError}</p>}
           </form>
+          )}
           <div className="relative mt-3">
             <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
@@ -2205,22 +2298,22 @@ export default function Dialer() {
                   >
                     <Avatar label={name ?? c.number} size="lg" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{name ?? c.number}</p>
-                      <p className="truncate text-xs text-slate-400 dark:text-slate-500">
-                        {c.lastDirection === "outbound" ? "You: " : ""}
+                      <p className="truncate text-[15px] font-semibold text-slate-800 dark:text-slate-100">{name ?? c.number}</p>
+                      <p className="mt-0.5 truncate text-[13px] text-slate-500 dark:text-slate-400">
+                        {c.lastDirection === "outbound" && <span className="text-slate-400 dark:text-slate-500">You: </span>}
                         {c.lastBody}
                       </p>
                     </div>
                   </button>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500">{relativeDay(c.lastAt)}</span>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5 self-stretch py-0.5">
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500">{relativeDay(c.lastAt)}</span>
                     <button
                       type="button"
                       onClick={() => handleDeleteConversation(c.number)}
-                      className={MINI_ICON_BUTTON_CLASS}
+                      className="flex h-6 w-6 items-center justify-center rounded-full text-slate-300 transition-all hover:bg-slate-900/5 hover:text-[#C0272D] active:scale-90 dark:text-slate-600 dark:hover:bg-white/10"
                       aria-label={`Delete conversation with ${name ?? c.number}`}
                     >
-                      <TrashIcon className="h-3 w-3" />
+                      <TrashIcon className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
