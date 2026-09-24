@@ -54,6 +54,14 @@ export async function POST(req: Request) {
       errorMessage: m.errorMessage ?? null,
     });
   } catch (err) {
+    // Twilio's SDK throws an error whose `status` is the HTTP status Twilio
+    // itself returned - 404 when the SID is well-formed but doesn't exist
+    // (deleted, or from a different account). That's a normal "not found",
+    // not a server problem, so it gets its own message and status rather
+    // than the generic failure below.
+    if (typeof err === "object" && err !== null && "status" in err && (err as { status?: number }).status === 404) {
+      return NextResponse.json({ error: "Message not found." }, { status: 404 });
+    }
     console.error("[api/messages/info] Twilio fetch failed:", err);
     return NextResponse.json({ error: "Failed to load message info." }, { status: 502 });
   }

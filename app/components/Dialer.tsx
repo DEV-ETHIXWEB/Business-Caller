@@ -659,6 +659,7 @@ export default function Dialer() {
   const [appLocked, setAppLocked] = useState(false);
   const [showLockedChats, setShowLockedChats] = useState(false);
   const [lockedChatsPinOpen, setLockedChatsPinOpen] = useState(false);
+  const [deepLinkTarget, setDeepLinkTarget] = useState<{ number: string; text?: string } | null>(null);
   const [pinSetupOpen, setPinSetupOpen] = useState<"create" | "change" | null>(null);
   const [secretSetupOpen, setSecretSetupOpen] = useState(false);
   const hiddenAtRef = useRef<number | null>(null);
@@ -861,6 +862,8 @@ export default function Dialer() {
   }, [activeThread]);
 
   // A link like /?chat=%2B14155550111 (from "Copy chat link") opens that chat.
+  // A locked chat still asks for the PIN first - a saved, shared or
+  // bookmarked link must not be a way around chat lock.
   const deepLinkDoneRef = useRef(false);
   useEffect(() => {
     if (!unlocked || deepLinkDoneRef.current) return;
@@ -871,13 +874,22 @@ export default function Dialer() {
     const number = normalizePhoneNumber(chat);
     window.history.replaceState(window.history.state, "", window.location.pathname);
     if (!isValidE164(number)) return;
-    const text = params.get("text");
+    const text = params.get("text") ?? undefined;
     setTimeout(() => {
+      // If it's locked but there's no PIN to check it against (should not
+      // normally happen - turning the PIN off also unlocks every chat), fall
+      // through and open it rather than getting silently stuck with nothing
+      // on screen.
+      if (chatPrefs.isLocked(number) && lockConfig) {
+        setDeepLinkTarget({ number, text });
+        return;
+      }
       setMessageTo(number);
       setActiveTab("texts");
       setActiveThread(number);
       if (text) setTimeout(() => setMessageBody(text.slice(0, 1600)), 50);
     }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked]);
 
   // App lock: re-lock after the tab has been hidden for longer than the
@@ -2364,17 +2376,40 @@ export default function Dialer() {
   const chatMessages = [...messageLog, ...visiblePending].filter((m) => !chatPrefs.isHidden(m.sid) && (!disappearCutoff || m.at >= disappearCutoff));
   // Disappearing messages: texts older than the chat's timer are removed from
   // Twilio's records (a few at a time) the next time the chat's messages load.
+  // A sid is only kept out of future attempts once its delete actually
+  // succeeds - a failed one (rate-limited, offline, a dropped connection) is
+  // released again so the next poll tick retries it, rather than being
+  // silently abandoned in Twilio's records forever.
   useEffect(() => {
     if (!activeThread || !disappearAfter) return;
     const cutoff = Date.now() - disappearAfter * 1000;
-    const expired = messageLog.filter((m) => m.at < cutoff && !m.sid.startsWith("pending-") && !expiredRef.current.has(m.sid)).slice(0, 25);
+    // Kept well under the delete endpoint's 30-per-5-minute limit even
+    // across a couple of back-to-back poll ticks.
+    const expired = messageLog.filter((m) => m.at < cutoff && !m.sid.startsWith("pending-") && !expiredRef.current.has(m.sid)).slice(0, 10);
     if (!expired.length) return;
     const saved = loadSession();
     if (!saved) return;
     for (const m of expired) {
       expiredRef.current.add(m.sid);
-      void fetch("/api/messages", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...saved, sid: m.sid }) }).catch(() => undefined);
+      fetch("/api/messages", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...saved, sid: m.sid }) })
+        .then((res) => {
+          if (!res.ok) {
+            expiredRef.current.delete(m.sid);
+            return;
+          }
+          // Gone from Twilio for good - a star or a pin pointing at it would
+          // otherwise be a permanently broken entry with nothing left to open.
+          chatPrefs.unstarMany([m.sid]);
+          unpinIfAmong([m.sid]);
+        })
+        .catch(() => {
+          expiredRef.current.delete(m.sid);
+        });
     }
+    // Deliberately not re-run when chatPrefs/unpinIfAmong change identity -
+    // this sweep only needs to react to the message list, the open chat, and
+    // the timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messageLog, activeThread, disappearAfter]);
 
   const selectedMessages = chatMessages.filter((m) => selectedSids.includes(m.sid));
@@ -2504,9 +2539,17 @@ export default function Dialer() {
   // Deleting: "for me" only hides the text on this screen; "permanently"
   // removes it from Twilio's records (there is no way to unsend an SMS the
   // other phone already has).
+  // A deleted message can't stay pinned to the top of a chat it's no longer in.
+  function unpinIfAmong(sids: string[]) {
+    if (!activeThread) return;
+    const pinned = chatPrefs.prefs.pinnedMessage[activeThread];
+    if (pinned && sids.includes(pinned.sid)) chatPrefs.setPinnedMessage(activeThread, null);
+  }
+
   function deleteForMe(sids: string[]) {
     chatPrefs.hide(sids);
     chatPrefs.unstarMany(sids);
+    unpinIfAmong(sids);
     setSelectedSids([]);
     setToast(sids.length === 1 ? "Message deleted for you" : `${sids.length} messages deleted for you`);
   }
@@ -2524,6 +2567,7 @@ export default function Dialer() {
       ),
     );
     chatPrefs.unstarMany(real);
+    unpinIfAmong(real);
     await fetchThread(activeThread);
     setToast(real.length === 1 ? "Message deleted" : `${real.length} messages deleted`);
   }
@@ -3997,7 +4041,19 @@ export default function Dialer() {
         <ConfirmSheet
           title="Clear this chat?"
           body="It empties the chat on this screen only. The texts stay in Twilio, and the other person keeps theirs."
-          options={[{ label: "Clear for me", danger: true, run: () => { chatPrefs.hide(chatMessages.map((m) => m.sid)); setToast("Chat cleared"); } }]}
+          options={[
+            {
+              label: "Clear for me",
+              danger: true,
+              run: () => {
+                const sids = chatMessages.map((m) => m.sid);
+                chatPrefs.hide(sids);
+                chatPrefs.unstarMany(sids);
+                unpinIfAmong(sids);
+                setToast("Chat cleared");
+              },
+            },
+          ]}
           onClose={() => setClearChatFor(null)}
         />
       )}
@@ -4046,6 +4102,27 @@ export default function Dialer() {
             if (res.ok) {
               setLockedChatsPinOpen(false);
               setShowLockedChats(true);
+            }
+            return res;
+          }}
+        />
+      )}
+
+      {deepLinkTarget && lockConfig && (
+        <PinPromptSheet
+          length={lockConfig.pin.length}
+          title="Enter your PIN"
+          initialWait={Math.max(0, Math.ceil((lockConfig.lockedUntil - Date.now()) / 1000))}
+          onClose={() => setDeepLinkTarget(null)}
+          onSubmit={async (pin) => {
+            const res = await verifyPin(pin);
+            if (res.ok) {
+              const { number, text } = deepLinkTarget;
+              setDeepLinkTarget(null);
+              setMessageTo(number);
+              setActiveTab("texts");
+              setActiveThread(number);
+              if (text) setTimeout(() => setMessageBody(text.slice(0, 1600)), 50);
             }
             return res;
           }}
@@ -4185,6 +4262,10 @@ export default function Dialer() {
             setLockConfig(null);
             setAppLocked(false);
             setShowLockedChats(false);
+            // Without a PIN there is no way left to prove you should see a
+            // locked chat, so it would otherwise stay hidden with no way
+            // back in - unlock them all rather than strand them.
+            for (const number of chatPrefs.prefs.locked) chatPrefs.toggleLock(number);
             setToast("PIN turned off");
           }}
           onSetAutoLock={(minutes) => {
