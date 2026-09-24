@@ -161,6 +161,7 @@ export function SettingsPanel({
     >
       <div
         role="dialog"
+        aria-modal="true"
         aria-label="Settings"
         onClick={(e) => e.stopPropagation()}
         className="flex h-full w-full flex-col overflow-hidden bg-gradient-to-br from-[#F7F2F1] via-white to-[#F5EFEE] animate-[chat-in_0.22s_ease-out] dark:from-[#0c0d10] dark:via-[#120a0b] dark:to-black lg:h-auto lg:max-h-[calc(100dvh-3rem)] lg:max-w-md lg:rounded-[2rem] lg:border lg:border-white/70 lg:shadow-[0_25px_70px_-20px_rgba(192,39,45,0.25)] lg:animate-[pop-in_0.25s_cubic-bezier(0.16,1,0.3,1)] dark:lg:border-white/10"

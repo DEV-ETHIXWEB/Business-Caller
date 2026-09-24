@@ -416,7 +416,7 @@ const SMALL_BUTTON_CLASS =
   "w-full rounded-full bg-gradient-to-b from-slate-800 to-slate-950 py-2 text-xs font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_8px_18px_-8px_rgba(15,23,42,0.5)] transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:from-white dark:to-slate-100 dark:text-slate-900";
 
 const KEYPAD_BUTTON_CLASS =
-  "mx-auto flex h-16 w-16 flex-col items-center justify-center gap-0.5 rounded-full border border-white/60 bg-white/50 font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_8px_16px_-8px_rgba(15,23,42,0.4),0_3px_6px_-3px_rgba(15,23,42,0.2)] backdrop-blur-sm transition-all duration-150 hover:bg-white/80 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_10px_18px_-8px_rgba(192,39,45,0.3),0_4px_8px_-3px_rgba(192,39,45,0.2)] active:scale-90 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_8px_16px_-8px_rgba(0,0,0,0.7),0_3px_6px_-3px_rgba(0,0,0,0.5)] dark:hover:bg-white/10";
+  "mx-auto flex aspect-square w-16 max-w-full flex-col items-center justify-center gap-0.5 rounded-full border border-white/60 bg-white/50 font-medium text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_8px_16px_-8px_rgba(15,23,42,0.4),0_3px_6px_-3px_rgba(15,23,42,0.2)] backdrop-blur-sm transition-all duration-150 hover:bg-white/80 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_10px_18px_-8px_rgba(192,39,45,0.3),0_4px_8px_-3px_rgba(192,39,45,0.2)] active:scale-90 active:shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_8px_16px_-8px_rgba(0,0,0,0.7),0_3px_6px_-3px_rgba(0,0,0,0.5)] dark:hover:bg-white/10";
 
 function KeypadButton({ digit, letters, onClick }: { digit: string; letters: string; onClick: () => void }) {
   return (
@@ -430,16 +430,16 @@ function KeypadButton({ digit, letters, onClick }: { digit: string; letters: str
 }
 
 const CALL_ACTION_CIRCLE_CLASS =
-  "flex h-14 w-14 items-center justify-center rounded-full border border-white/60 bg-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_14px_26px_-10px_rgba(15,23,42,0.35),0_4px_10px_-4px_rgba(15,23,42,0.2)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-90 dark:border-white/10 dark:bg-white/5 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_14px_26px_-10px_rgba(0,0,0,0.6),0_4px_10px_-4px_rgba(0,0,0,0.4)] dark:hover:bg-white/10";
+  "flex aspect-square w-14 max-w-full items-center justify-center rounded-full border border-white/60 bg-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_14px_26px_-10px_rgba(15,23,42,0.35),0_4px_10px_-4px_rgba(15,23,42,0.2)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-90 dark:border-white/10 dark:bg-white/5 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_14px_26px_-10px_rgba(0,0,0,0.6),0_4px_10px_-4px_rgba(0,0,0,0.4)] dark:hover:bg-white/10";
 
 const CALL_ACTION_CIRCLE_ACTIVE_CLASS =
-  "flex h-14 w-14 items-center justify-center rounded-full border border-[#C0272D]/30 bg-[#C0272D]/10 text-[#C0272D] shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_14px_26px_-10px_rgba(192,39,45,0.5),0_4px_10px_-4px_rgba(192,39,45,0.3)] backdrop-blur-sm transition-all active:scale-90 dark:border-[#C0272D]/40 dark:bg-[#C0272D]/15 dark:text-[#ff8087]";
+  "flex aspect-square w-14 max-w-full items-center justify-center rounded-full border border-[#C0272D]/30 bg-[#C0272D]/10 text-[#C0272D] shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_14px_26px_-10px_rgba(192,39,45,0.5),0_4px_10px_-4px_rgba(192,39,45,0.3)] backdrop-blur-sm transition-all active:scale-90 dark:border-[#C0272D]/40 dark:bg-[#C0272D]/15 dark:text-[#ff8087]";
 
 const CALL_BUTTON_CIRCLE_CLASS =
-  "mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_20px_36px_-12px_rgba(16,185,129,0.7),0_6px_14px_-4px_rgba(16,185,129,0.4)] transition-all hover:brightness-105 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_24px_40px_-12px_rgba(16,185,129,0.75),0_8px_16px_-4px_rgba(16,185,129,0.45)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
+  "mx-auto flex aspect-square w-16 max-w-full items-center justify-center rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_20px_36px_-12px_rgba(16,185,129,0.7),0_6px_14px_-4px_rgba(16,185,129,0.4)] transition-all hover:brightness-105 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_24px_40px_-12px_rgba(16,185,129,0.75),0_8px_16px_-4px_rgba(16,185,129,0.45)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
 
 const HANGUP_CIRCLE_CLASS =
-  "mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_20px_36px_-12px_rgba(192,39,45,0.7),0_6px_14px_-4px_rgba(192,39,45,0.4)] transition-all hover:brightness-105 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_24px_40px_-12px_rgba(192,39,45,0.75),0_8px_16px_-4px_rgba(192,39,45,0.45)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
+  "mx-auto flex aspect-square w-16 max-w-full items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_20px_36px_-12px_rgba(192,39,45,0.7),0_6px_14px_-4px_rgba(192,39,45,0.4)] transition-all hover:brightness-105 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_24px_40px_-12px_rgba(192,39,45,0.75),0_8px_16px_-4px_rgba(192,39,45,0.45)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
 
 const HEADER_PILL_CLASS =
   "flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] pl-3 pr-3.5 text-xs font-semibold text-white shadow-[0_8px_18px_-8px_rgba(192,39,45,0.7)] transition-all active:scale-95";
@@ -872,6 +872,18 @@ export default function Dialer() {
     const el = threadScrollRef.current;
     if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [messageLog, pendingMessages, viewportHeight, activeThread, isDesktop]);
+
+  // Escape closes the Settings or Profile dialog (desktop keyboards).
+  useEffect(() => {
+    if (!settingsOpen && !profileOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (settingsOpen) setSettingsOpen(false);
+      else setProfileOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [settingsOpen, profileOpen]);
 
   // Escape drops the current message selection (desktop keyboards).
   useEffect(() => {
@@ -2745,7 +2757,7 @@ export default function Dialer() {
         {/* Mic/speaker pickers - shown at all times, including mid-call, so
             switching from the earpiece/speaker to a Bluetooth headset (or
             back) doesn't require hanging up first. */}
-        <div className={`mt-4 grid gap-2 ${outputSelectionSupported ? "grid-cols-2" : "grid-cols-1"}`}>
+        <div className={`mt-4 grid gap-2 ${outputSelectionSupported ? "grid-cols-1 min-[400px]:grid-cols-2" : "grid-cols-1"}`}>
           <div className="relative">
             <MicIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <select
@@ -3224,9 +3236,14 @@ export default function Dialer() {
       {/* Profile panel */}
       {profileOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-[fade-in_0.2s_ease-out]">
-          <div className={`${CARD_CLASS} max-h-[calc(100dvh-2rem)] overflow-y-auto animate-[pop-in_0.25s_cubic-bezier(0.16,1,0.3,1)]`}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-title"
+            className={`${CARD_CLASS} max-h-[calc(100dvh-2rem)] overflow-y-auto animate-[pop-in_0.25s_cubic-bezier(0.16,1,0.3,1)]`}
+          >
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold tracking-wide text-slate-900 dark:text-white">Profile</h2>
+              <h2 id="profile-title" className="text-lg font-semibold tracking-wide text-slate-900 dark:text-white">Profile</h2>
               <button type="button" onClick={() => setProfileOpen(false)} className={MINI_ICON_BUTTON_CLASS} aria-label="Close">
                 <CloseIcon className="h-3.5 w-3.5" />
               </button>
@@ -3255,7 +3272,7 @@ export default function Dialer() {
               <p className="mt-3 text-base font-medium text-slate-900 dark:text-white">{signedInLabel || signedInUsername}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">{callerId}</p>
               {status && (
-                <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+                <p className="mt-1 max-w-full text-center text-sm text-slate-700 [overflow-wrap:anywhere] dark:text-slate-200">
                   {status.emoji} {status.text}
                 </p>
               )}
