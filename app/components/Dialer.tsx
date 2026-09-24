@@ -589,6 +589,30 @@ function MessageTicks({ status }: { status: string }) {
   return <CheckIcon className="h-3 w-3 opacity-50" />;
 }
 
+// Turns http(s) links inside a message into tappable links - the way
+// WhatsApp does - without ever using innerHTML.
+function linkify(text: string): React.ReactNode[] {
+  return text.split(/(https?:\/\/[^\s]+)/g).map((part, i) => {
+    if (i % 2 === 0) return part;
+    const trailing = part.match(/[.,!?;:)\]]+$/)?.[0] ?? "";
+    const url = trailing ? part.slice(0, -trailing.length) : part;
+    return (
+      <span key={i}>
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="underline decoration-current/50 underline-offset-2"
+        >
+          {url}
+        </a>
+        {trailing}
+      </span>
+    );
+  });
+}
+
 function dayLabel(at: number): string {
   const date = new Date(at);
   const now = new Date();
@@ -764,6 +788,16 @@ export default function Dialer() {
     const el = threadScrollRef.current;
     if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [messageLog, pendingMessages, viewportHeight, activeThread, isDesktop]);
+
+  // Escape drops the current message selection (desktop keyboards).
+  useEffect(() => {
+    if (!selectedMessageSid) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setSelectedMessageSid(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedMessageSid]);
 
   // A freshly opened chat always starts at the latest message.
   useEffect(() => {
@@ -2043,7 +2077,7 @@ export default function Dialer() {
       style={isDesktop ? undefined : { top: vv?.top ?? 0, height: vv?.height ?? "100dvh" }}
     >
       {selectedMessage ? (
-        <header className="flex shrink-0 items-center gap-1 border-b border-slate-900/5 pb-2 pl-1 pr-2 pt-[max(0.5rem,env(safe-area-inset-top))] animate-[fade-in_0.15s_ease-out] dark:border-white/5 lg:pt-0">
+        <header className="flex shrink-0 items-center gap-1 border-b border-slate-900/5 pb-2 pl-1 pr-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pt-[max(0.5rem,env(safe-area-inset-top))] animate-[fade-in_0.15s_ease-out] dark:border-white/5 lg:pt-0">
           <button
             type="button"
             onClick={() => setSelectedMessageSid(null)}
@@ -2079,7 +2113,7 @@ export default function Dialer() {
           </button>
         </header>
       ) : (
-      <header className="flex shrink-0 items-center gap-1.5 border-b border-slate-900/5 pb-2 pl-1 pr-2 pt-[max(0.5rem,env(safe-area-inset-top))] dark:border-white/5 lg:pt-0">
+      <header className="flex shrink-0 items-center gap-1.5 border-b border-slate-900/5 pb-2 pl-1 pr-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pt-[max(0.5rem,env(safe-area-inset-top))] dark:border-white/5 lg:pt-0">
         <button
           type="button"
           onClick={closeChat}
@@ -2113,12 +2147,14 @@ export default function Dialer() {
         ref={threadScrollRef}
         onClick={() => setSelectedMessageSid(null)}
         onScroll={handleThreadScroll}
-        className="chat-wallpaper min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 lg:my-2 lg:rounded-2xl lg:border lg:border-white/40 lg:bg-white/20 dark:lg:border-white/5 dark:lg:bg-black/10"
+        className="chat-wallpaper min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 md:max-lg:px-[max(0.75rem,calc((100%-44rem)/2))] lg:my-2 lg:rounded-2xl lg:border lg:border-white/40 lg:bg-white/20 dark:lg:border-white/5 dark:lg:bg-black/10"
       >
         {chatMessages.length === 0 && !messagesLoading && (
-          <p className="mt-10 text-center text-sm text-slate-400 dark:text-slate-500">
-            No messages yet. Send the first one below.
-          </p>
+          <div className="mt-8 flex justify-center px-4">
+            <p className="rounded-2xl bg-white/90 px-4 py-2 text-center text-xs leading-relaxed text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.12)] dark:bg-white/10 dark:text-slate-300">
+              No messages yet. Send the first one below - it goes out as a text message.
+            </p>
+          </div>
         )}
         {chatMessages.map((m, i) => {
           const prev = chatMessages[i - 1];
@@ -2137,7 +2173,7 @@ export default function Dialer() {
                 </div>
               )}
               <div className={`flex ${out ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2.5"}`}>
-                <div className={`flex max-w-[82%] flex-col lg:max-w-[70%] ${out ? "items-end" : "items-start"}`}>
+                <div className={`flex min-w-0 max-w-[82%] flex-col lg:max-w-[70%] ${out ? "items-end" : "items-start"}`}>
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2151,8 +2187,8 @@ export default function Dialer() {
                   >
                     {/* The time floats to the end of the last line (WhatsApp
                         style), so short messages stay one compact bubble. */}
-                    <p className="flow-root whitespace-pre-wrap break-words">
-                      {m.body}
+                    <p className="flow-root whitespace-pre-wrap [overflow-wrap:anywhere]">
+                      {linkify(m.body)}
                       <span
                         className={`float-right ml-2.5 mt-[7px] inline-flex select-none items-center gap-1 text-[10px] leading-none ${out ? "text-white/75" : "text-slate-400"}`}
                       >
@@ -2179,7 +2215,7 @@ export default function Dialer() {
       )}
       </div>
 
-      <div className="shrink-0 border-t border-slate-900/5 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 dark:border-white/5 lg:border-0 lg:px-0 lg:pb-0">
+      <div className="shrink-0 border-t border-slate-900/5 px-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 dark:border-white/5 lg:border-0 lg:px-0 lg:pb-0">
         {smsError && <p className={`px-2 pb-1.5 ${COMPACT_ERROR_CLASS}`}>{smsError}</p>}
         <form onSubmit={handleSendMessage} className="flex items-end gap-2">
           <div className="relative min-w-0 flex-1">

@@ -223,7 +223,9 @@ compliance step, not something this app's code can work around.
   and a faint dotted wallpaper sits behind them. Tap a message to select it:
   the header turns into a bar with Copy and Delete. Scroll up to read
   history and the chat stays put (background refreshes never yank you down);
-  a round button jumps back to the latest message. In the Texts list, "New
+  a round button jumps back to the latest message. Links in messages are tappable, and long links or
+  unbroken text wrap inside the bubble instead of spilling out. On tablets
+  the chat is a centred column; Escape clears a selection on desktop. In the Texts list, "New
   message" opens the number box.
 - **Messages/SMS (Texts tab)** — an inbox-style list of every past
   conversation (pulled from Twilio's real message history, most recent
