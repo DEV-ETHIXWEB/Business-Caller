@@ -402,6 +402,9 @@ const CALL_BUTTON_CIRCLE_CLASS =
 const HANGUP_CIRCLE_CLASS =
   "mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_20px_36px_-12px_rgba(192,39,45,0.7),0_6px_14px_-4px_rgba(192,39,45,0.4)] transition-all hover:brightness-105 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_24px_40px_-12px_rgba(192,39,45,0.75),0_8px_16px_-4px_rgba(192,39,45,0.45)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none";
 
+const HEADER_PILL_CLASS =
+  "flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] pl-3 pr-3.5 text-xs font-semibold text-white shadow-[0_8px_18px_-8px_rgba(192,39,45,0.7)] transition-all active:scale-95";
+
 const MINI_ICON_BUTTON_CLASS =
   "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/60 bg-white/50 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-90 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10";
 
@@ -756,6 +759,7 @@ export default function Dialer() {
   const [messageTo, setMessageTo] = useState("");
   const [scrolledUp, setScrolledUp] = useState(false);
   const [newMessageOpen, setNewMessageOpen] = useState(false);
+  const [newContactOpen, setNewContactOpen] = useState(false);
   const [messageBody, setMessageBody] = useState("");
   const [pendingMessages, setPendingMessages] = useState<ThreadMessage[]>([]);
   const [selectedMessageSid, setSelectedMessageSid] = useState<string | null>(null);
@@ -1789,6 +1793,7 @@ export default function Dialer() {
     setContacts(next);
     setNewContactName("");
     setNewContactNumber("");
+    setNewContactOpen(false);
 
     const ok = await saveContactsToServer(next);
     if (!ok) {
@@ -2003,8 +2008,8 @@ export default function Dialer() {
               <button type="button" onClick={() => dialNumber(entry.with)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                 <Avatar label={name ?? entry.with} size="lg" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{name ?? entry.with}</p>
-                  <p className={`flex items-center gap-1 truncate text-xs ${missed ? "text-[#C0272D]" : "text-slate-400 dark:text-slate-500"}`}>
+                  <p className="truncate text-[15px] font-semibold text-slate-800 dark:text-slate-100">{name ?? entry.with}</p>
+                  <p className={`flex items-center gap-1 truncate text-[13px] ${missed ? "text-[#C0272D]" : "text-slate-500 dark:text-slate-400"}`}>
                     {entry.direction === "inbound" ? (
                       <ArrowDownRightIcon className="h-3 w-3 shrink-0" />
                     ) : (
@@ -2015,7 +2020,7 @@ export default function Dialer() {
                 </div>
               </button>
               <div className="flex shrink-0 flex-col items-end gap-1.5">
-                <span className="text-[10px] text-slate-400 dark:text-slate-500">{relativeDay(entry.at)}</span>
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">{relativeDay(entry.at)}</span>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
@@ -2270,7 +2275,7 @@ export default function Dialer() {
             setSmsError(null);
           }}
           aria-expanded={newMessageOpen}
-          className="flex h-9 items-center gap-1.5 rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] pl-3 pr-3.5 text-xs font-semibold text-white shadow-[0_8px_18px_-8px_rgba(192,39,45,0.7)] transition-all active:scale-95"
+          className={HEADER_PILL_CLASS}
         >
           <PlusIcon className={`h-3.5 w-3.5 transition-transform ${newMessageOpen ? "rotate-45" : ""}`} />
           New message
@@ -2365,10 +2370,50 @@ export default function Dialer() {
 
   const contactsTabBody = (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold tracking-wide text-slate-900 dark:text-white">Contacts</h1>
-        {contactsLoading && <span className="text-[10px] text-slate-400 dark:text-slate-500">syncing…</span>}
+        <div className="flex items-center gap-2">
+          {contactsLoading && <span className="text-[10px] text-slate-400 dark:text-slate-500">syncing…</span>}
+          <button
+            type="button"
+            onClick={() => {
+              playTap();
+              setNewContactOpen((open) => !open);
+              setContactFormError(null);
+            }}
+            aria-expanded={newContactOpen}
+            className={HEADER_PILL_CLASS}
+          >
+            <PlusIcon className={`h-3.5 w-3.5 transition-transform ${newContactOpen ? "rotate-45" : ""}`} />
+            New contact
+          </button>
+        </div>
       </div>
+      {newContactOpen && (
+        <form onSubmit={handleAddContact} className="mt-3 space-y-2 animate-[slide-fade-in_0.2s_ease-out]">
+          <input
+            autoFocus
+            value={newContactName}
+            onChange={(e) => setNewContactName(e.target.value)}
+            placeholder="Name"
+            className={COMPACT_INPUT_CLASS}
+            aria-label="Contact name"
+          />
+          <input
+            type="tel"
+            inputMode="tel"
+            value={newContactNumber}
+            onChange={(e) => setNewContactNumber(e.target.value)}
+            placeholder="+1 555 123 4567"
+            className={COMPACT_INPUT_CLASS}
+            aria-label="Contact number"
+          />
+          {contactFormError && <p className={COMPACT_ERROR_CLASS}>{contactFormError}</p>}
+          <button type="submit" className={SMALL_BUTTON_CLASS}>
+            Save contact
+          </button>
+        </form>
+      )}
       <div className="relative mt-3">
         <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
@@ -2391,8 +2436,8 @@ export default function Dialer() {
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <Avatar label={c.name} size="lg" />
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{c.name}</p>
-                <p className="truncate text-xs text-slate-400 dark:text-slate-500">{c.number}</p>
+                <p className="truncate text-[15px] font-semibold text-slate-800 dark:text-slate-100">{c.name}</p>
+                <p className="mt-0.5 truncate text-[13px] text-slate-500 dark:text-slate-400">{c.number}</p>
               </div>
             </div>
             <div className="flex shrink-0 gap-1.5">
@@ -2429,30 +2474,6 @@ export default function Dialer() {
           </div>
         ))}
       </div>
-
-      <form onSubmit={handleAddContact} className="mt-2 space-y-2 border-t border-slate-900/5 pt-4 pb-24 dark:border-white/5 lg:pb-0">
-        <input
-          value={newContactName}
-          onChange={(e) => setNewContactName(e.target.value)}
-          placeholder="Name"
-          className={COMPACT_INPUT_CLASS}
-          aria-label="Contact name"
-        />
-        <input
-          value={newContactNumber}
-          onChange={(e) => setNewContactNumber(e.target.value)}
-          placeholder="+1 555 123 4567"
-          className={COMPACT_INPUT_CLASS}
-          aria-label="Contact number"
-        />
-        {contactFormError && <p className={COMPACT_ERROR_CLASS}>{contactFormError}</p>}
-        <button type="submit" className={SMALL_BUTTON_CLASS}>
-          <span className="inline-flex items-center justify-center gap-1.5">
-            <PlusIcon className="h-3.5 w-3.5" />
-            Add Contact
-          </span>
-        </button>
-      </form>
     </div>
   );
 

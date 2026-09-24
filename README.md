@@ -208,7 +208,8 @@ compliance step, not something this app's code can work around.
   per-person Twilio Sync Document (see `TWILIO_SYNC_SERVICE_SID` below), so
   each person's list shows up on every device they unlock the dialer from —
   add one on a laptop, it's there on the phone too — without being visible
-  to anyone else signed in with a different login.
+  to anyone else signed in with a different login. A "New contact" button
+  in the header opens the add form, so the list keeps the whole screen.
 - **Chat view (phones)** — opening a conversation on a phone shows a
   full-screen, WhatsApp-style chat: name/avatar and a Call button pinned at
   the top, message bubbles with day separators and delivery ticks (one tick
