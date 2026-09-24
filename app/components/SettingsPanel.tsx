@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar } from "./Avatar";
+import { ChevronRightIcon, CloseIcon } from "./icons";
 import type { Settings, ThemeSetting, TextSizeSetting, WallpaperSetting } from "@/lib/settings";
 
 export interface ProfileStatusValue {
@@ -13,21 +14,7 @@ const SECTION_CLASS =
 
 const LABEL_CLASS = "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400";
 
-function CloseIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M18 6 6 18M6 6l12 12" />
-    </svg>
-  );
-}
 
-function ChevronRightIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="m9 18 6-6-6-6" />
-    </svg>
-  );
-}
 
 function Segmented<T extends string>({
   label,
@@ -192,7 +179,7 @@ export function SettingsPanel({
               </span>
               <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{about || callerId}</span>
             </span>
-            <ChevronRightIcon className="h-5 w-5 shrink-0 text-slate-400" />
+            <ChevronRightIcon className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400" />
           </button>
 
           <section className={SECTION_CLASS} aria-label="Appearance">
@@ -274,7 +261,7 @@ export function SettingsPanel({
             type="button"
             onClick={onSignOut}
             disabled={signOutDisabled}
-            className={`${SECTION_CLASS} w-full py-3 text-center text-sm font-semibold text-[#C0272D] transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40`}
+            className={`${SECTION_CLASS} w-full py-3 text-center text-sm font-semibold text-[#C0272D] dark:text-[#ff6b72] transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40`}
           >
             Sign out
           </button>

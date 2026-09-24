@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EmojiPicker } from "./EmojiPicker";
+import { CameraIcon, CloseIcon, ImageIcon, KeyboardIcon, MicIcon, PaperclipIcon, SendIcon, SmileIcon, TrashIcon } from "../icons";
 import { prepareImage, type PreparedImage } from "@/lib/imageResize";
 import {
   MAX_VOICE_SECONDS,
@@ -15,68 +16,6 @@ import {
 
 const MAX_SMS_LENGTH = 1600;
 
-type IconProps = { className?: string };
-const svg = (children: React.ReactNode, className?: string, fill = false) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill={fill ? "currentColor" : "none"}
-    stroke={fill ? "none" : "currentColor"}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-  >
-    {children}
-  </svg>
-);
-const SmileGlyph = ({ className }: IconProps) =>
-  svg(
-    <>
-      <circle cx="12" cy="12" r="9.2" />
-      <path d="M8.2 14.2c.9 1.3 2.2 2 3.8 2s2.9-.7 3.8-2" />
-      <path d="M9 9.6h.01M15 9.6h.01" strokeWidth="2.6" />
-    </>,
-    className,
-  );
-const KeyboardGlyph = ({ className }: IconProps) =>
-  svg(
-    <>
-      <rect x="2.5" y="6" width="19" height="12" rx="2.5" />
-      <path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M7 14h10" strokeWidth="2" />
-    </>,
-    className,
-  );
-const ClipGlyph = ({ className }: IconProps) =>
-  svg(<path d="m20.5 11.5-8.6 8.6a5.2 5.2 0 0 1-7.4-7.4l8.9-8.9a3.5 3.5 0 0 1 5 5l-8.9 8.9a1.8 1.8 0 0 1-2.5-2.5l8.2-8.2" />, className);
-const MicGlyph = ({ className }: IconProps) =>
-  svg(
-    <>
-      <rect x="9" y="2.5" width="6" height="12" rx="3" />
-      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5" />
-    </>,
-    className,
-  );
-const SendGlyph = ({ className }: IconProps) => svg(<path d="M21.4 3.3 2.9 10.6a.6.6 0 0 0 0 1.1l6.6 2.6 2.6 6.6a.6.6 0 0 0 1.1 0l7.2-18.4a.6.6 0 0 0-.9-.8ZM9.6 14.2l8-8" />, className);
-const TrashGlyph = ({ className }: IconProps) =>
-  svg(<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v6M14 11v6" />, className);
-const CameraGlyph = ({ className }: IconProps) =>
-  svg(
-    <>
-      <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.4-2h6.2l1.4 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5Z" />
-      <circle cx="12" cy="13" r="3.4" />
-    </>,
-    className,
-  );
-const ImageGlyph = ({ className }: IconProps) =>
-  svg(
-    <>
-      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
-      <circle cx="9" cy="10" r="1.6" />
-      <path d="m20.5 16-4.6-4.6a1 1 0 0 0-1.4 0L6 19.5" />
-    </>,
-    className,
-  );
-const CloseGlyph = ({ className }: IconProps) => svg(<path d="M18 6 6 18M6 6l12 12" />, className);
 
 const ROUND_BUTTON =
   "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[0_8px_18px_-8px_rgba(192,39,45,0.7)] transition-all active:scale-90 disabled:opacity-40 disabled:shadow-none";
@@ -296,7 +235,7 @@ export function Composer({
       <div className="relative">
         <div className="flex items-center gap-2" role="group" aria-label="Recording a voice message">
           <button type="button" onClick={() => void finish(false)} className={`${PILL_ICON} !h-11 !w-11 rounded-full bg-slate-900/5 dark:bg-white/10`} aria-label="Cancel recording">
-            <TrashGlyph className="h-5 w-5" />
+            <TrashIcon className="h-5 w-5" />
           </button>
           <div className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-3xl border border-slate-900/10 bg-white/90 px-4 dark:border-white/10 dark:bg-white/10">
             <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-[#C0272D]" aria-hidden />
@@ -311,7 +250,7 @@ export function Composer({
             <span className="shrink-0 text-[0.6875rem] text-slate-400">max {formatClock(MAX_VOICE_SECONDS)}</span>
           </div>
           <button type="button" onClick={() => void finish(true)} className={ROUND_BUTTON} aria-label="Send voice message">
-            <SendGlyph className="h-5 w-5" />
+            <SendIcon className="h-5 w-5" />
           </button>
         </div>
       </div>
@@ -328,7 +267,7 @@ export function Composer({
           <img src={image.previewUrl} alt="Picture to send" className="h-16 w-16 rounded-xl object-cover" />
           <p className="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">Ready to send. Add a caption below if you like.</p>
           <button type="button" onClick={() => setImage(null)} className={`${PILL_ICON} !h-9 !w-9`} aria-label="Remove picture">
-            <CloseGlyph className="h-4 w-4" />
+            <CloseIcon className="h-4 w-4" />
           </button>
         </div>
       )}
@@ -352,7 +291,7 @@ export function Composer({
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors hover:bg-slate-900/5 dark:text-slate-100 dark:hover:bg-white/10"
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white">
-              <ImageGlyph className="h-4 w-4" />
+              <ImageIcon className="h-4 w-4" />
             </span>
             Photo
           </button>
@@ -364,7 +303,7 @@ export function Composer({
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 transition-colors hover:bg-slate-900/5 dark:text-slate-100 dark:hover:bg-white/10"
             >
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-b from-slate-700 to-slate-950 text-white">
-                <CameraGlyph className="h-4 w-4" />
+                <CameraIcon className="h-4 w-4" />
               </span>
               Camera
             </button>
@@ -385,7 +324,7 @@ export function Composer({
             aria-label={emojiOpen && !isDesktop ? "Show keyboard" : "Emoji"}
             aria-expanded={emojiOpen}
           >
-            {emojiOpen && !isDesktop ? <KeyboardGlyph className="h-6 w-6" /> : <SmileGlyph className="h-6 w-6" />}
+            {emojiOpen && !isDesktop ? <KeyboardIcon className="h-6 w-6" /> : <SmileIcon className="h-6 w-6" />}
           </button>
           <textarea
             ref={setRef}
@@ -428,7 +367,7 @@ export function Composer({
             aria-expanded={attachOpen}
             aria-haspopup="menu"
           >
-            <ClipGlyph className="h-[1.375rem] w-[1.375rem]" />
+            <PaperclipIcon className="h-[1.375rem] w-[1.375rem]" />
           </button>
           {value.length > MAX_SMS_LENGTH - 200 && (
             <span className="pointer-events-none absolute -top-4 right-3 text-[0.625rem] text-slate-400">
@@ -446,7 +385,7 @@ export function Composer({
             className={ROUND_BUTTON}
             aria-label="Send"
           >
-            <SendGlyph className="h-5 w-5" />
+            <SendIcon className="h-5 w-5" />
           </button>
         ) : (
           <button
@@ -457,7 +396,7 @@ export function Composer({
             className={ROUND_BUTTON}
             aria-label="Record voice message"
           >
-            <MicGlyph className="h-[1.375rem] w-[1.375rem]" />
+            <MicIcon className="h-[1.375rem] w-[1.375rem]" />
           </button>
         )}
       </form>

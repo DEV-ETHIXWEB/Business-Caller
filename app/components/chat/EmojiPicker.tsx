@@ -1,16 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SearchIcon } from "../icons";
 import { EMOJI_CATEGORIES, loadRecentEmoji, rememberEmoji, searchEmoji } from "@/lib/emoji";
 
-function SearchGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3.5-3.5" />
-    </svg>
-  );
-}
 
 // WhatsApp style emoji panel. On a phone it sits in the space the keyboard
 // would use; on a computer it floats above the message box. Search, a row of
@@ -78,7 +71,7 @@ export function EmojiPicker({
       }}
     >
       <div className="relative shrink-0 px-3 pt-3">
-        <SearchGlyph className="pointer-events-none absolute left-6 top-1/2 mt-1.5 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <SearchIcon className="pointer-events-none absolute left-6 top-1/2 mt-1.5 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}

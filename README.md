@@ -367,6 +367,8 @@ app/
   layout.tsx
   components/Dialer.tsx    All dialer/calls/texts/contacts/profile UI + Twilio Device logic (client-side)
   components/Avatar.tsx    Circular avatar - shows an uploaded photo, or a colored initials fallback
+  components/icons.tsx     Every icon in the app, drawn to one style (1.8 line weight, decorative by default). Add new icons here, not inline
+  components/chat/         Chat pieces: Composer (emoji, mic, attach), EmojiPicker, VoicePlayer, MediaViews, ConversationList
   api/token/route.ts       Mints Twilio Access Tokens for the signed-in user (server-side, gated by APP_USERS); also returns their avatarUrl
   api/voice/route.ts       TwiML webhook Twilio calls to place the outbound leg; resolves caller ID from the caller's identity
   api/sms/route.ts         Sends outbound SMS or MMS (voice note, photo) via the Twilio REST API, from the signed-in user's own number

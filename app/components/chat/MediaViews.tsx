@@ -4,22 +4,9 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ThreadMedia } from "@/lib/messageThread";
 import { VoicePlayer } from "./VoicePlayer";
+import { CloseIcon, DownloadIcon } from "../icons";
 
-function CloseGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M18 6 6 18M6 6l12 12" />
-    </svg>
-  );
-}
 
-function DownloadGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14" />
-    </svg>
-  );
-}
 
 // Full-screen picture viewer: dark backdrop, tap outside or Escape to close.
 function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
@@ -49,7 +36,7 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
           className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-all active:scale-90"
           aria-label="Download picture"
         >
-          <DownloadGlyph className="h-5 w-5" />
+          <DownloadIcon className="h-5 w-5" />
         </a>
         <button
           type="button"
@@ -57,7 +44,7 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
           className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-all active:scale-90"
           aria-label="Close picture"
         >
-          <CloseGlyph className="h-5 w-5" />
+          <CloseIcon className="h-5 w-5" />
         </button>
       </div>
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -123,7 +110,7 @@ export function MediaView({ media, out }: { media: ThreadMedia; out: boolean }) 
       onClick={(e) => e.stopPropagation()}
       className="flex items-center gap-2 rounded-xl bg-black/10 px-3 py-2 text-sm underline"
     >
-      <DownloadGlyph className="h-4 w-4" />
+      <DownloadIcon className="h-4 w-4" />
       Attachment
     </a>
   );

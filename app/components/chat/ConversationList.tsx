@@ -3,49 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Avatar } from "../Avatar";
+import { CameraIcon, DotsIcon, MailIcon, MicIcon, PaperclipIcon, PinIcon, TrashIcon } from "../icons";
 import type { ChatPrefsApi } from "@/lib/chatPrefs";
 import type { ConversationSummary } from "@/lib/messageThread";
 
-type IconProps = { className?: string };
-const ico = (children: React.ReactNode, className?: string) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {children}
-  </svg>
-);
-const PinGlyph = ({ className }: IconProps) => ico(<path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6ZM12 14v7" />, className);
-const DotsGlyph = ({ className }: IconProps) => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-    <circle cx="12" cy="5" r="1.7" />
-    <circle cx="12" cy="12" r="1.7" />
-    <circle cx="12" cy="19" r="1.7" />
-  </svg>
-);
-const MicSmall = ({ className }: IconProps) =>
-  ico(
-    <>
-      <rect x="9" y="3" width="6" height="11" rx="3" />
-      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" />
-    </>,
-    className,
-  );
-const CameraSmall = ({ className }: IconProps) =>
-  ico(
-    <>
-      <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.4-2h6.2l1.4 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5Z" />
-      <circle cx="12" cy="13" r="3.2" />
-    </>,
-    className,
-  );
-const ClipSmall = ({ className }: IconProps) => ico(<path d="m20.5 11.5-8.6 8.6a5.2 5.2 0 0 1-7.4-7.4l8.9-8.9a3.5 3.5 0 0 1 5 5l-8.9 8.9a1.8 1.8 0 0 1-2.5-2.5l8.2-8.2" />, className);
-const TrashSmall = ({ className }: IconProps) => ico(<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v6M14 11v6" />, className);
-const MailSmall = ({ className }: IconProps) =>
-  ico(
-    <>
-      <rect x="3" y="5" width="18" height="14" rx="2.5" />
-      <path d="m3.5 7 8.5 6 8.5-6" />
-    </>,
-    className,
-  );
 
 export type ListFilter = "all" | "unread" | "pinned";
 
@@ -70,7 +31,7 @@ function Preview({ c, draft, unread }: { c: ConversationSummary; draft?: string;
   if (draft) {
     return (
       <p className={`mt-0.5 truncate text-[0.8125rem] ${tone}`}>
-        <span className="font-medium text-[#C0272D]">Draft: </span>
+        <span className="font-medium text-[#C0272D] dark:text-[#ff6b72]">Draft: </span>
         {draft}
       </p>
     );
@@ -78,7 +39,7 @@ function Preview({ c, draft, unread }: { c: ConversationSummary; draft?: string;
   const you = c.lastDirection === "outbound" ? <span className="text-slate-400 dark:text-slate-500">You: </span> : null;
   if (c.lastKind) {
     const label = { audio: "Voice message", image: "Photo", video: "Video", other: "Attachment" }[c.lastKind];
-    const Icon = c.lastKind === "audio" ? MicSmall : c.lastKind === "other" ? ClipSmall : CameraSmall;
+    const Icon = c.lastKind === "audio" ? MicIcon : c.lastKind === "other" ? PaperclipIcon : CameraIcon;
     return (
       <p className={`mt-0.5 flex items-center gap-1 truncate text-[0.8125rem] ${tone}`}>
         {you}
@@ -244,9 +205,9 @@ export function ConversationList({
                 </div>
               </button>
               <div className="flex shrink-0 flex-col items-end gap-1.5 self-stretch py-0.5">
-                <span className={`text-[0.6875rem] ${unread ? "font-semibold text-[#C0272D]" : "text-slate-400 dark:text-slate-500"}`}>{relativeDay(c.lastAt)}</span>
+                <span className={`text-[0.6875rem] ${unread ? "font-semibold text-[#C0272D] dark:text-[#ff6b72]" : "text-slate-500 dark:text-slate-400"}`}>{relativeDay(c.lastAt)}</span>
                 <div className="flex items-center gap-1.5">
-                  {pinned && <PinGlyph className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" aria-hidden />}
+                  {pinned && <PinIcon className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" aria-hidden />}
                   {unread && <span className="h-2.5 w-2.5 rounded-full bg-[#C0272D] shadow-[0_0_0_3px_rgba(192,39,45,0.18)]" role="img" aria-label="Unread" />}
                   <button
                     type="button"
@@ -254,11 +215,11 @@ export function ConversationList({
                       const r = e.currentTarget.getBoundingClientRect();
                       openMenu(c.number, r.right, r.bottom);
                     }}
-                    className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition-all hover:bg-slate-900/5 hover:text-slate-600 active:scale-90 focus-visible:opacity-100 dark:hover:bg-white/10 lg:opacity-0 lg:group-hover:opacity-100"
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-all lg:h-6 lg:w-6 dark:text-slate-400 hover:bg-slate-900/5 hover:text-slate-600 active:scale-90 focus-visible:opacity-100 dark:hover:bg-white/10 lg:opacity-0 lg:group-hover:opacity-100"
                     aria-label={`More options for ${name ?? c.number}`}
                     aria-haspopup="menu"
                   >
-                    <DotsGlyph className="h-4 w-4" />
+                    <DotsIcon className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -288,21 +249,21 @@ export function ConversationList({
               {
                 key: "pin",
                 label: prefs.isPinned(menu.number) ? "Unpin chat" : "Pin chat",
-                icon: <PinGlyph className="h-[1.125rem] w-[1.125rem]" />,
+                icon: <PinIcon className="h-[1.125rem] w-[1.125rem]" />,
                 run: () => prefs.togglePin(menu.number),
                 danger: false,
               },
               {
                 key: "unread",
                 label: prefs.isUnread(menuTarget) ? "Mark as read" : "Mark as unread",
-                icon: <MailSmall className="h-[1.125rem] w-[1.125rem]" />,
+                icon: <MailIcon className="h-[1.125rem] w-[1.125rem]" />,
                 run: () => (prefs.isUnread(menuTarget) ? prefs.markRead(menu.number) : prefs.markUnread(menu.number)),
                 danger: false,
               },
               {
                 key: "delete",
                 label: "Delete chat",
-                icon: <TrashSmall className="h-[1.125rem] w-[1.125rem]" />,
+                icon: <TrashIcon className="h-[1.125rem] w-[1.125rem]" />,
                 run: () => onDelete(menu.number),
                 danger: true,
               },
@@ -316,7 +277,7 @@ export function ConversationList({
                   item.run();
                 }}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[0.9375rem] font-medium transition-colors hover:bg-slate-900/5 dark:hover:bg-white/10 lg:py-2.5 ${
-                  item.danger ? "text-[#C0272D]" : "text-slate-800 dark:text-slate-100"
+                  item.danger ? "text-[#C0272D] dark:text-[#ff6b72]" : "text-slate-800 dark:text-slate-100"
                 }`}
               >
                 {item.icon}

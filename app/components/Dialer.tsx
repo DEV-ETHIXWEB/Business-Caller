@@ -15,6 +15,7 @@ import type { ConversationSummary, ThreadMessage } from "@/lib/messageThread";
 import type { CallLogEntry } from "@/lib/callLog";
 import type { PublicCredentialInfo } from "@/lib/webauthn";
 import { Avatar, PRESET_COUNT } from "./Avatar";
+import { ArrowDownRightIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpRightIcon, BackspaceIcon, CameraIcon, CheckIcon, ChevronDownIcon, CloseIcon, CopyIcon, DotsIcon, DoubleCheckIcon, FingerprintIcon, ForwardIcon, GearIcon, KeypadIcon, LockIcon, MergeIcon, MessageIcon, MicIcon, MicOffIcon, PauseIcon, PeopleIcon, PersonPlusIcon, PhoneIcon, PlusIcon, SearchIcon, SpeakerIcon, TrashIcon } from "./icons";
 import { SettingsPanel, type ProfileStatusValue } from "./SettingsPanel";
 import { applySettings, useSettings } from "@/lib/settings";
 import { useChatPrefs } from "@/lib/chatPrefs";
@@ -144,130 +145,19 @@ function Logo() {
   );
 }
 
-function MicIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <rect x="9" y="2" width="6" height="12" rx="3" />
-      <path d="M5 10a7 7 0 0 0 14 0" />
-      <path d="M12 19v3" />
-    </svg>
-  );
-}
 
-function MicOffIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M9 9v2a3 3 0 0 0 5.12 2.12M12 2a3 3 0 0 1 3 3v4c0 .3-.03.6-.08.88M5 10a7 7 0 0 0 9.5 6.6M19 10a7 7 0 0 1-.34 2.17" />
-      <path d="M12 19v3" />
-      <path d="M3 3l18 18" />
-    </svg>
-  );
-}
 
-function SpeakerIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M11 5 6 9H3v6h3l5 4Z" />
-      <path d="M16 8a5 5 0 0 1 0 8" />
-      <path d="M19 5a9 9 0 0 1 0 14" />
-    </svg>
-  );
-}
 
-function KeypadIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      {[5, 12, 19].flatMap((cy) => [5, 12, 19].map((cx) => <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.6" />))}
-    </svg>
-  );
-}
 
-function ChevronDownIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="m6 9 6 6 6-6" />
-    </svg>
-  );
-}
 
-function PhoneIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92Z" />
-    </svg>
-  );
-}
 
-function MessageIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" />
-    </svg>
-  );
-}
 
-function TrashIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M3 6h18" />
-      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
-      <path d="M10 11v6M14 11v6" />
-    </svg>
-  );
-}
 
-function PlusIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
 
-function CopyIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <rect x="9" y="9" width="12" height="12" rx="2" />
-      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
-    </svg>
-  );
-}
 
-function LockGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <rect x="5" y="11" width="14" height="9.5" rx="2.5" />
-      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-    </svg>
-  );
-}
 
-function ForwardIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="m15 4 6 6-6 6M21 10H9a6 6 0 0 0-6 6v3" />
-    </svg>
-  );
-}
 
-function DotsIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <circle cx="12" cy="5" r="1.8" />
-      <circle cx="12" cy="12" r="1.8" />
-      <circle cx="12" cy="19" r="1.8" />
-    </svg>
-  );
-}
 
-function GearIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
-    </svg>
-  );
-}
 
 // The profile picture with the person's mood status as a small badge, like a
 // status dot on a chat app avatar.
@@ -297,127 +187,18 @@ function AvatarWithStatus({
   );
 }
 
-function ArrowLeftIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="m12 19-7-7 7-7" />
-      <path d="M19 12H5" />
-    </svg>
-  );
-}
 
-function ArrowRightIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M5 12h14" />
-      <path d="m12 5 7 7-7 7" />
-    </svg>
-  );
-}
 
-function CloseIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M18 6 6 18M6 6l12 12" />
-    </svg>
-  );
-}
 
-function BackspaceIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M9 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6.5-7Z" />
-      <path d="M13 10l4 4M17 10l-4 4" />
-    </svg>
-  );
-}
 
-function PauseIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <rect x="6" y="5" width="4" height="14" rx="1" />
-      <rect x="14" y="5" width="4" height="14" rx="1" />
-    </svg>
-  );
-}
 
-function PersonPlusIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="9" cy="8" r="3.2" />
-      <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
-      <path d="M18 8v6M15 11h6" />
-    </svg>
-  );
-}
 
-function MergeIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M6 4v6a4 4 0 0 0 4 4h4" />
-      <path d="M14 10l4 4-4 4" />
-      <path d="M6 20v-6" />
-    </svg>
-  );
-}
 
-function PeopleIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="9" cy="8" r="3" />
-      <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
-      <path d="M16.5 8.5a3 3 0 1 1 3.9 2.86" />
-      <path d="M16 14.5c2.7.4 4.5 1.9 5 3.5" />
-    </svg>
-  );
-}
 
-function SearchIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="11" cy="11" r="7" />
-      <path d="m21 21-4.3-4.3" />
-    </svg>
-  );
-}
 
-function CameraIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M4 8a2 2 0 0 1 2-2h1.5l1-1.5h7l1 1.5H18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" />
-      <circle cx="12" cy="13" r="3.5" />
-    </svg>
-  );
-}
 
-function ArrowDownRightIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M7 7l10 10M17 8v9h-9" />
-    </svg>
-  );
-}
 
-function ArrowUpRightIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M7 17 17 7M8 7h9v9" />
-    </svg>
-  );
-}
 
-function FingerprintIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M12 10a2 2 0 0 1 2 2c0 2.8-.6 5-2.5 7" />
-      <path d="M8.5 14.5c.7-1 1-2 1-3.5a2.5 2.5 0 0 1 5 0c0 .3 0 .6-.03.9" />
-      <path d="M5.5 12.5c0-.7.1-1.4.3-2" />
-      <path d="M17.7 16.6c.5-1.5.8-3 .8-4.6a6.5 6.5 0 0 0-11.4-4.3" />
-      <path d="M12 3a9 9 0 0 1 9 9c0 .8-.06 1.5-.2 2.2" />
-      <path d="M3.1 15a9 9 0 0 1-.1-3" />
-    </svg>
-  );
-}
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -478,7 +259,7 @@ const HEADER_PILL_CLASS =
   "flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] pl-3 pr-3.5 text-xs font-semibold text-white shadow-[0_8px_18px_-8px_rgba(192,39,45,0.7)] transition-all active:scale-95";
 
 const MINI_ICON_BUTTON_CLASS =
-  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/60 bg-white/50 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-90 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10";
+  "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/60 before:absolute before:-inset-[5px] before:content-[''] lg:h-7 lg:w-7 bg-white/50 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-sm transition-all hover:bg-white/80 active:scale-90 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10";
 
 const ERROR_BANNER_CLASS =
   "rounded-2xl border border-red-200/60 bg-red-50/80 px-3 py-2 text-sm text-red-700 backdrop-blur-sm dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-300";
@@ -660,22 +441,7 @@ function guessDeviceLabel(): string {
   return `${browser} on ${platform}`;
 }
 
-function CheckIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="m5 12.5 4.5 4.5L19 7.5" />
-    </svg>
-  );
-}
 
-function DoubleCheckIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="m2 12.5 4.5 4.5L16 7.5" />
-      <path d="m10.5 16.6.4.4L20.5 7.5" />
-    </svg>
-  );
-}
 
 // WhatsApp-style delivery marks on your own messages: one tick sent, two
 // delivered, and a plain-words note when the carrier rejected it.
@@ -2364,7 +2130,7 @@ export default function Dialer() {
         {callLogLoading && <span className="text-[0.625rem] text-slate-400 dark:text-slate-500">syncing…</span>}
       </div>
       <div className="relative mt-3">
-        <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
         <input
           value={callsSearch}
           onChange={(e) => setCallsSearch(e.target.value)}
@@ -2388,7 +2154,7 @@ export default function Dialer() {
                 <Avatar label={name ?? entry.with} size="lg" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[0.9375rem] font-semibold text-slate-800 dark:text-slate-100">{name ?? entry.with}</p>
-                  <p className={`flex items-center gap-1 truncate text-[0.8125rem] ${missed ? "text-[#C0272D]" : "text-slate-500 dark:text-slate-400"}`}>
+                  <p className={`flex items-center gap-1 truncate text-[0.8125rem] ${missed ? "text-[#C0272D] dark:text-[#ff6b72]" : "text-slate-500 dark:text-slate-400"}`}>
                     {entry.direction === "inbound" ? (
                       <ArrowDownRightIcon className="h-3 w-3 shrink-0" />
                     ) : (
@@ -2526,7 +2292,7 @@ export default function Dialer() {
               setSelectedMessageSid(null);
               void handleDeleteMessage(sid);
             }}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-[#C0272D] transition-all active:scale-90 active:bg-[#C0272D]/10"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-[#C0272D] dark:text-[#ff6b72] transition-all active:scale-90 active:bg-[#C0272D]/10"
             aria-label="Delete message"
           >
             <TrashIcon className="h-5 w-5" />
@@ -2637,7 +2403,7 @@ export default function Dialer() {
                     setChatMenuOpen(false);
                     void handleDeleteConversation(activeThread);
                   }}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[#C0272D] hover:bg-slate-900/5 dark:hover:bg-white/10"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[#C0272D] dark:text-[#ff6b72] hover:bg-slate-900/5 dark:hover:bg-white/10"
                 >
                   Delete chat
                 </button>
@@ -2824,7 +2590,7 @@ export default function Dialer() {
           </form>
           )}
           <div className="relative mt-3">
-            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
             <input
               value={textsSearch}
               onChange={(e) => setTextsSearch(e.target.value)}
@@ -2865,7 +2631,7 @@ export default function Dialer() {
         Send and receive texts, photos and voice notes from your business number, right from your computer. Pick a chat on the left to start.
       </p>
       <p className="mt-10 flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
-        <LockGlyph className="h-3.5 w-3.5" />
+        <LockIcon className="h-3.5 w-3.5" />
         Messages are sent as SMS or MMS from {callerId}
       </p>
     </div>
@@ -2929,7 +2695,7 @@ export default function Dialer() {
         </form>
       )}
       <div className="relative mt-3">
-        <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
         <input
           value={contactsSearch}
           onChange={(e) => setContactsSearch(e.target.value)}
@@ -3118,7 +2884,7 @@ export default function Dialer() {
             back) doesn't require hanging up first. */}
         <div className={`mt-4 grid gap-2 ${outputSelectionSupported ? "grid-cols-1 min-[400px]:grid-cols-2" : "grid-cols-1"}`}>
           <div className="relative">
-            <MicIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <MicIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
             <select
               aria-label="Microphone"
               value={selectedInputId}
@@ -3133,12 +2899,12 @@ export default function Dialer() {
                 </option>
               ))}
             </select>
-            <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+            <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
           </div>
 
           {outputSelectionSupported && (
             <div className="relative">
-              <SpeakerIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <SpeakerIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
               <select
                 aria-label="Speaker"
                 value={selectedOutputId}
@@ -3153,7 +2919,7 @@ export default function Dialer() {
                   </option>
                 ))}
               </select>
-              <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+              <ChevronDownIcon className="pointer-events-none absolute right-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
             </div>
           )}
         </div>
@@ -3478,7 +3244,7 @@ export default function Dialer() {
                 playTap();
                 setSettingsOpen(true);
               }}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition-all active:scale-90 active:bg-slate-900/5 dark:text-slate-300 dark:active:bg-white/10"
               aria-label="Settings"
             >
               <GearIcon className="h-5 w-5" />
@@ -3490,6 +3256,7 @@ export default function Dialer() {
                 setProfileOpen(true);
               }}
               aria-label="Profile"
+              className="rounded-full p-1"
             >
               <AvatarWithStatus label={signedInLabel || signedInUsername} photoUrl={avatarUrl} size="md" status={status} />
             </button>
@@ -3699,7 +3466,7 @@ export default function Dialer() {
                   type="button"
                   onClick={() => avatarInputRef.current?.click()}
                   disabled={avatarUploading}
-                  className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-b from-slate-800 to-slate-950 text-white shadow-[0_6px_16px_-6px_rgba(15,23,42,0.6)] transition-all hover:brightness-110 active:scale-90 disabled:opacity-50 dark:from-white dark:to-slate-100 dark:text-slate-900"
+                  className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full before:absolute before:-inset-2 before:content-[''] bg-gradient-to-b from-slate-800 to-slate-950 text-white shadow-[0_6px_16px_-6px_rgba(15,23,42,0.6)] transition-all hover:brightness-110 active:scale-90 disabled:opacity-50 dark:from-white dark:to-slate-100 dark:text-slate-900"
                   aria-label="Change photo"
                 >
                   <CameraIcon className="h-3.5 w-3.5" />
@@ -3725,7 +3492,7 @@ export default function Dialer() {
                 <button
                   type="button"
                   onClick={handleRemoveAvatar}
-                  className="mt-1 text-xs font-medium text-[#C0272D] hover:underline"
+                  className="mt-1 text-xs font-medium text-[#C0272D] dark:text-[#ff6b72] hover:underline"
                 >
                   Remove photo
                 </button>
@@ -3824,7 +3591,7 @@ export default function Dialer() {
                 <button
                   type="button"
                   onClick={() => void saveProfile({ status: null })}
-                  className="mt-2 text-xs font-medium text-[#C0272D] hover:underline"
+                  className="mt-2 text-xs font-medium text-[#C0272D] dark:text-[#ff6b72] hover:underline"
                 >
                   Clear status
                 </button>
@@ -3865,7 +3632,7 @@ export default function Dialer() {
                     type="button"
                     onClick={handleEnableBiometric}
                     disabled={registeringDevice}
-                    className="text-xs font-medium text-[#C0272D] hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                    className="text-xs font-medium text-[#C0272D] dark:text-[#ff6b72] hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {registeringDevice ? "Adding…" : "+ Add this device"}
                   </button>
@@ -3884,7 +3651,7 @@ export default function Dialer() {
                         <button
                           type="button"
                           onClick={() => handleRemoveDevice(d.id, d.deviceLabel)}
-                          className="shrink-0 text-slate-400 transition-colors hover:text-[#C0272D]"
+                          className="shrink-0 text-slate-400 transition-colors hover:text-[#C0272D] dark:hover:text-[#ff6b72]"
                           aria-label={`Remove ${d.deviceLabel}`}
                         >
                           <TrashIcon className="h-3 w-3" />
@@ -3912,7 +3679,7 @@ export default function Dialer() {
               type="button"
               onClick={handleSignOut}
               disabled={canHangUp}
-              className={`${SMALL_BUTTON_CLASS} mt-2 !bg-none !bg-transparent !text-[#C0272D] !shadow-none disabled:cursor-not-allowed disabled:opacity-40`}
+              className={`${SMALL_BUTTON_CLASS} mt-2 !bg-none !bg-transparent !text-[#C0272D] dark:!text-[#ff6b72] !shadow-none disabled:cursor-not-allowed disabled:opacity-40`}
             >
               Sign out
             </button>

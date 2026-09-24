@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadMedia } from "@/lib/messageThread";
 import { formatClock, pseudoPeaks } from "@/lib/voice";
+import { PauseIcon, PlayIcon } from "../icons";
 
 const BARS = 36;
 const RATES = [1, 1.5, 2];
@@ -10,22 +11,7 @@ const RATES = [1, 1.5, 2];
 // Only one voice note plays at a time, like every chat app.
 let activeAudio: HTMLAudioElement | null = null;
 
-function PlayGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z" />
-    </svg>
-  );
-}
 
-function PauseGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <rect x="6" y="5" width="4.5" height="14" rx="1.4" />
-      <rect x="13.5" y="5" width="4.5" height="14" rx="1.4" />
-    </svg>
-  );
-}
 
 function resample(peaks: number[], n: number): number[] {
   if (peaks.length === n) return peaks;
@@ -106,7 +92,7 @@ export function VoicePlayer({ media, out }: { media: ThreadMedia; out: boolean }
           out ? "bg-white/25 text-white" : "bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[0_4px_10px_-4px_rgba(192,39,45,0.7)]"
         }`}
       >
-        {playing ? <PauseGlyph className="h-4 w-4" /> : <PlayGlyph className="ml-0.5 h-4 w-4" />}
+        {playing ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
       </button>
 
       <div className="min-w-0 flex-1">
