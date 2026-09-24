@@ -294,9 +294,13 @@ export const PaperclipIcon = ({ className }: IconProps) => (
   </Outline>
 );
 
+// A paper plane: one closed outline and a single fold line that runs from the
+// tip back to the body. (An earlier version drew the fold as a separate path
+// that ended on the outline, which left a double dot at the tip.)
 export const SendIcon = ({ className }: IconProps) => (
   <Outline className={className}>
-    <path d="M21.4 3.3 2.9 10.6a.6.6 0 0 0 0 1.1l6.6 2.6 2.6 6.6a.6.6 0 0 0 1.1 0l7.2-18.4a.6.6 0 0 0-.9-.8ZM9.6 14.2l8-8" />
+    <path d="m21.5 2.5-6.6 19a.6.6 0 0 1-1.1.05L10.6 14 2.5 10.8a.6.6 0 0 1 .05-1.1Z" />
+    <path d="M21.5 2.5 10.6 14" />
   </Outline>
 );
 
