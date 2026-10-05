@@ -19,6 +19,7 @@ import { ArrowDownRightIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpRightIcon, Ba
 import { SettingsPanel, type ProfileStatusValue } from "./SettingsPanel";
 import { applySettings, useSettings } from "@/lib/settings";
 import { FOREVER, useChatPrefs } from "@/lib/chatPrefs";
+import { useSendQueue, type QueuedSend, type SendAttemptResult } from "@/lib/sendQueue";
 import { Composer } from "./chat/Composer";
 import { ConversationList } from "./chat/ConversationList";
 import { MessageBubble } from "./chat/MessageBubble";
@@ -476,6 +477,48 @@ interface ForwardItem {
   media?: { messageSid: string; mediaSid: string }[];
 }
 
+// Posts one text to /api/sms and sorts the outcome into "worth retrying" or
+// not, for both the first attempt and every automatic retry after it.
+// Retried: couldn't even reach the server (a network blip, or the server
+// being down - the literal case this exists for), or the server/Twilio
+// answered but was rate-limited or briefly struggling (429/5xx). Not
+// retried: anything else - a bad number, an empty/too-long message, an
+// expired session, a message Twilio itself refuses. Those fail for the same
+// reason every single time, so retrying would only spend money failing
+// again, not eventually succeed.
+async function postSms(saved: Credentials, to: string, message: string, mediaDataUrls?: string[]): Promise<SendAttemptResult> {
+  let res: Response;
+  try {
+    res = await fetch("/api/sms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...saved, to, message, ...(mediaDataUrls?.length ? { media: mediaDataUrls } : {}) }),
+    });
+  } catch {
+    return { ok: false, retryable: true, error: "Could not reach the server." };
+  }
+  const data = (await res.json().catch(() => ({}))) as { sid?: string; error?: string };
+  if (res.ok && data.sid) return { ok: true, sid: data.sid };
+  const retryable = res.status === 429 || res.status >= 500;
+  return { ok: false, retryable, error: data.error || "Failed to send message." };
+}
+
+// Twilio error codes that genuinely mean "try again later" - the carrier's
+// queue was briefly full, or the handset was unreachable for a moment (off,
+// no signal, briefly out of coverage). Deliberately NOT in this list: a bad
+// or opted-out number, a landline, carrier spam filtering, or an
+// unregistered A2P 10DLC sender (error 30034, the exact one found in this
+// account's own history) - every one of those is a fixed, structural block
+// that returns the identical rejection no matter how many times the same
+// message is retried, so auto-retrying them would just spend money to fail
+// again. Those need a real fix (registering the campaign, a different
+// number, the recipient re-opting in), not a retry loop.
+const RETRYABLE_TWILIO_ERROR_CODES = new Set([30001, 30008]);
+// Unreachable handset gets its own, longer-odds category: worth exactly one
+// retry after giving the phone a couple of minutes to come back into
+// coverage, not the same aggressive schedule as a queue overflow.
+const RETRY_ONCE_TWILIO_ERROR_CODES = new Set([30003]);
+
 // Replies that count as answers to a poll or event: everything the other side
 // sent after it (a poll I sent is answered by them, and the other way round).
 function votesFor(m: ThreadMessage, all: ThreadMessage[]): Vote[] {
@@ -647,7 +690,13 @@ export default function Dialer() {
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [newContactOpen, setNewContactOpen] = useState(false);
   const [messageBody, setMessageBody] = useState("");
-  const [pendingMessages, setPendingMessages] = useState<ThreadMessage[]>([]);
+  // Tagged with the number each one is actually going to - a send that's
+  // still retrying in the background can now live far longer than before
+  // (up to ~35 minutes, see sendQueue below), so filtering these to the
+  // chat that's currently open actually matters: without it, switching to
+  // another conversation while one is retrying would show its bubble there
+  // too.
+  const [pendingMessages, setPendingMessages] = useState<(ThreadMessage & { to: string })[]>([]);
   const [selectedSids, setSelectedSids] = useState<string[]>([]);
   const [selMoreOpen, setSelMoreOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<{ sid: string; text: string; who: string } | null>(null);
@@ -2137,13 +2186,44 @@ export default function Dialer() {
     setActiveThread(normalized);
   }
 
+  // Backs every automatic retry of a text that couldn't even reach the
+  // server (the server being briefly down is exactly this case): it keeps
+  // trying in the background, with backoff, for about 35 minutes, surviving
+  // a page reload in between, before finally giving up. See postSms and the
+  // RETRYABLE_* constants above for what is and isn't considered worth
+  // retrying - a message Twilio itself refuses (bad number, opted out,
+  // filtered) never ends up here, because retrying it can only ever fail
+  // the same way again.
+  const sendQueueAttempt = useCallback((item: QueuedSend): Promise<SendAttemptResult> => {
+    const saved = loadSession();
+    if (!saved) return Promise.resolve<SendAttemptResult>({ ok: false, retryable: false, error: "Your session expired." });
+    return postSms(saved, item.to, item.body, item.mediaDataUrls);
+  }, []);
+  const sendQueueSettled = useCallback(
+    (item: QueuedSend, result: SendAttemptResult | { ok: false; retryable: false; error: string; gaveUp: true }) => {
+      setPendingMessages((p) => p.filter((m) => m.sid !== item.id));
+      for (const url of item.previewUrls ?? []) if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+      if (result.ok) {
+        void fetchThread(item.to);
+        void fetchConversations();
+        return;
+      }
+      const gaveUp = "gaveUp" in result && result.gaveUp;
+      setToast(gaveUp ? `Couldn't deliver to ${item.to} after several tries: ${result.error}` : `Couldn't send to ${item.to}: ${result.error}`);
+    },
+    [fetchThread, fetchConversations],
+  );
+  const sendQueue = useSendQueue(signedInUsername || null, sendQueueAttempt, sendQueueSettled);
+
   // Sends optimistically, like a messaging app: the message appears in the
   // chat and the box clears immediately, then the real record replaces it
-  // once Twilio has it. If the send fails, the text goes back in the box so
-  // nothing typed is lost.
-  // One path for everything that goes out: text, a voice note, or a photo.
-  // The message shows at once and the box clears; if the send fails, the text
-  // goes back in the box so nothing typed is lost.
+  // once Twilio has it. If the send fails for a reason retrying can't fix
+  // (a bad number, an empty/too-long message, an expired session), the text
+  // goes back in the box so nothing typed is lost. If it fails for a reason
+  // that might resolve itself (the server was briefly unreachable), it's
+  // handed to sendQueue instead, which keeps retrying in the background -
+  // see the comment above sendQueue for why those two cases are handled
+  // differently.
   async function sendOutgoing(outgoing: {
     body: string;
     media?: OutgoingMedia[];
@@ -2178,7 +2258,7 @@ export default function Dialer() {
 
     const thread = activeThread;
     const tempSid = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const pending: ThreadMessage = { sid: tempSid, direction: "outbound", body, status: "sending", at: Date.now() };
+    const pending: ThreadMessage & { to: string } = { sid: tempSid, to: thread, direction: "outbound", body, status: "sending", at: Date.now() };
     if (outgoing.media?.length) {
       pending.media = outgoing.media.map((m, i) => ({
         sid: `${tempSid}-media-${i}`,
@@ -2197,27 +2277,38 @@ export default function Dialer() {
       setEditing(null);
     }
 
-    try {
-      const res = await fetch("/api/sms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...saved, to: thread, message: body, ...(outgoing.media?.length ? { media: outgoing.media.map((m) => m.dataUrl) } : {}) }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { sid?: string; status?: string; error?: string };
-      if (!res.ok || !data.sid) {
-        throw new Error(data.error || "Failed to send message.");
-      }
+    const result = await postSms(saved, thread, body, outgoing.media?.length ? outgoing.media.map((m) => m.dataUrl) : undefined);
+
+    if (result.ok) {
       // Pull the thread again immediately rather than waiting for the next
       // poll tick, so the real record replaces the placeholder right away.
       await fetchThread(thread);
       void fetchConversations();
-    } catch (err) {
-      setSmsError(err instanceof Error ? err.message : "Failed to send message.");
-      if (plain && !outgoing.skipReply) setMessageBody((current) => current || plain);
-    } finally {
       setPendingMessages((p) => p.filter((m) => m.sid !== tempSid));
       for (const m of outgoing.media ?? []) if (m.previewUrl.startsWith("blob:")) URL.revokeObjectURL(m.previewUrl);
+      return;
     }
+
+    if (result.retryable) {
+      // Keep the bubble on screen, marked as retrying, and hand it to the
+      // background queue instead of failing outright - nothing is lost and
+      // nothing needs restoring into the composer, since this will keep
+      // trying on its own.
+      setPendingMessages((p) => p.map((m) => (m.sid === tempSid ? { ...m, status: "retrying" } : m)));
+      sendQueue.enqueue({
+        id: tempSid,
+        to: thread,
+        body,
+        mediaDataUrls: outgoing.media?.length ? outgoing.media.map((m) => m.dataUrl) : undefined,
+        previewUrls: outgoing.media?.length ? outgoing.media.map((m) => m.previewUrl) : undefined,
+      });
+      return;
+    }
+
+    setSmsError(result.error);
+    if (plain && !outgoing.skipReply) setMessageBody((current) => current || plain);
+    setPendingMessages((p) => p.filter((m) => m.sid !== tempSid));
+    for (const m of outgoing.media ?? []) if (m.previewUrl.startsWith("blob:")) URL.revokeObjectURL(m.previewUrl);
   }
 
   // Sends copies of the chosen messages (their text and any attachment) to
@@ -2421,10 +2512,23 @@ export default function Dialer() {
     </div>
   );
 
+  // A text-only send still waiting on a retry survives a page reload (see
+  // sendQueue above), but pendingMessages itself is just plain state and
+  // starts empty on every fresh load - without this, a message quietly
+  // retrying in the background after a reload would show nothing at all
+  // until it finally resolves. Reconstructed here, purely for display, from
+  // whatever's still in the persisted queue and not already represented.
+  const queuedBubbles: (ThreadMessage & { to: string })[] = sendQueue.queue
+    .filter((q) => !pendingMessages.some((m) => m.sid === q.id))
+    .map((q) => ({ sid: q.id, to: q.to, direction: "outbound", body: q.body, status: "retrying", at: q.createdAt }));
+
   // A message you sent that the server hasn't listed yet - hidden as soon as
-  // the real record shows up, so it never appears twice.
-  const visiblePending = pendingMessages.filter(
+  // the real record shows up, so it never appears twice. Scoped to the open
+  // chat: a message still retrying for a different number must never show
+  // up here.
+  const visiblePending = [...pendingMessages, ...queuedBubbles].filter(
     (p) =>
+      p.to === activeThread &&
       !messageLog.some(
         (m) =>
           m.direction === "outbound" &&
@@ -2642,6 +2746,51 @@ export default function Dialer() {
     if (!res.ok) throw new Error(data.error || "Could not load the details.");
     return data;
   }, []);
+
+  // A message that reaches Twilio but still comes back failed/undelivered is
+  // a different case from sendQueue above: this one did leave, and the
+  // carrier gave a definite answer, so there's no "same request, try again"
+  // to retry - only a fresh message can be sent. Worth doing automatically
+  // for the handful of error codes that genuinely mean "temporary" (see
+  // RETRYABLE_TWILIO_ERROR_CODES/RETRY_ONCE_TWILIO_ERROR_CODES above); never
+  // for the rest, since those are the ones that would just fail identically
+  // and spend money doing it. Scoped to whichever chat is open when the
+  // failure is first seen, and to that number specifically, so switching
+  // chats mid-retry can never send to the wrong person. Each sid is looked
+  // at exactly once, succeed or not.
+  const twilioRetriedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!activeThread) return;
+    const thread = activeThread;
+    const candidates = messageLog.filter(
+      (m) => m.direction === "outbound" && (m.status === "failed" || m.status === "undelivered") && !twilioRetriedRef.current.has(m.sid),
+    );
+    for (const m of candidates) {
+      twilioRetriedRef.current.add(m.sid);
+      loadMessageInfo(m.sid)
+        .then((info) => {
+          const code = info.errorCode;
+          if (code == null) return;
+          const retryOnce = RETRY_ONCE_TWILIO_ERROR_CODES.has(code);
+          if (!RETRYABLE_TWILIO_ERROR_CODES.has(code) && !retryOnce) return;
+          window.setTimeout(
+            () => {
+              const saved = loadSession();
+              if (!saved) return;
+              void postSms(saved, thread, m.body).then((result) => {
+                if (result.ok) {
+                  void fetchThread(thread);
+                  void fetchConversations();
+                }
+              });
+            },
+            retryOnce ? 90_000 : 20_000,
+          );
+        })
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageLog, activeThread]);
 
   // ---- Jumping to a message -----------------------------------------------------
 

@@ -3,6 +3,11 @@ import { CheckIcon, DoubleCheckIcon } from "../icons";
 // WhatsApp-style delivery marks on your own messages: one tick sent, two
 // delivered, and a plain-words note when the carrier rejected it.
 export function MessageTicks({ status, onOpenInfo }: { status: string; onOpenInfo?: () => void }) {
+  // Couldn't reach the server (it was briefly down, or the network dropped) -
+  // being retried automatically in the background, not failed yet.
+  if (status === "retrying") {
+    return <span className="italic text-white/75">Retrying…</span>;
+  }
   if (status === "failed" || status === "undelivered") {
     // Tappable: the carrier's actual rejection reason (e.g. "landline",
     // "filtered", "unregistered number") only shows up in message info,
