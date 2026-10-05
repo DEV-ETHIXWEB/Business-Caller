@@ -1,5 +1,31 @@
 @import "tailwindcss";
 
+/* `100dvh` tracks the real, currently-visible viewport (it shrinks/grows as
+   a mobile browser's own address bar hides/shows), which is exactly right
+   for a full-screen app shell - but a browser/webview that predates the
+   `dvh` unit (it only shipped everywhere by ~2023; some embedded/in-app
+   browsers and older WebViews still don't understand it) treats `height:
+   100dvh` as an invalid value and drops it entirely, leaving the element's
+   height unset. For the root app shell that means it can fall short of the
+   actual screen height, and everything below it - including the bottom
+   tab bar - sits above a gap filled by the page's own background instead
+   of reaching the true bottom edge. `100vh` is given first as a fallback
+   every such browser understands; `100dvh` after it only takes over where
+   it's actually supported. */
+@utility h-viewport {
+  height: 100vh;
+  @supports (height: 100dvh) {
+    height: 100dvh;
+  }
+}
+
+@utility min-h-viewport {
+  min-height: 100vh;
+  @supports (height: 100dvh) {
+    min-height: 100dvh;
+  }
+}
+
 /* Dark mode is a class on <html> (set from the person's Theme setting, or
    from the device when it is on "System"), not just the OS media query. */
 @custom-variant dark (&:where(.dark, .dark *));

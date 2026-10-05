@@ -213,7 +213,7 @@ function AvatarWithStatus({
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-gradient-to-br from-[#F7F2F1] via-white to-[#F5EFEE] px-4 py-8 dark:from-[#0c0d10] dark:via-[#120a0b] dark:to-black">
+    <div className="relative flex min-h-viewport items-center justify-center overflow-hidden bg-gradient-to-br from-[#F7F2F1] via-white to-[#F5EFEE] px-4 py-8 dark:from-[#0c0d10] dark:via-[#120a0b] dark:to-black">
       <div className="pointer-events-none absolute -left-24 -top-32 h-96 w-96 rounded-full bg-[#C0272D]/20 blur-[120px] dark:bg-[#C0272D]/25" />
       <div className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-[#C0272D]/10 blur-[120px] dark:bg-[#C0272D]/10" />
       <div className="pointer-events-none absolute right-10 top-10 h-56 w-56 rounded-full bg-slate-400/10 blur-[100px] dark:bg-white/5" />
@@ -278,7 +278,7 @@ const ERROR_BANNER_CLASS =
 const COMPACT_ERROR_CLASS = "text-xs text-red-600 dark:text-red-400";
 
 const NAV_RAIL_CLASS =
-  "hidden lg:flex lg:h-dvh lg:w-20 lg:shrink-0 lg:flex-col lg:items-center lg:gap-2 lg:border-r lg:border-white/50 lg:bg-white/60 lg:py-6 lg:backdrop-blur-2xl lg:backdrop-saturate-150 dark:lg:border-white/10 dark:lg:bg-white/[0.04]";
+  "hidden lg:flex lg:h-viewport lg:w-20 lg:shrink-0 lg:flex-col lg:items-center lg:gap-2 lg:border-r lg:border-white/50 lg:bg-white/60 lg:py-6 lg:backdrop-blur-2xl lg:backdrop-saturate-150 dark:lg:border-white/10 dark:lg:bg-white/[0.04]";
 
 const NAV_BUTTON_BASE_CLASS = "flex w-16 flex-col items-center gap-1 rounded-2xl px-2 py-2.5 text-[0.625rem] font-medium transition-all active:scale-95";
 
@@ -291,7 +291,7 @@ const NAV_BUTTON_INACTIVE_CLASS = `${NAV_BUTTON_BASE_CLASS} text-slate-500 hover
 // and on some mobile browsers (Chrome's dynamic address/toolbar resizing
 // the visible area) that can leave a gap between the bar and the true
 // bottom edge until the browser's chrome settles. A flex item at the end of
-// a column sized to the dynamic viewport (h-dvh) has no such ambiguity: it
+// a column sized to the dynamic viewport (h-viewport) has no such ambiguity: it
 // is, by definition, flush with the bottom of whatever space is actually
 // available, on every device.
 const BOTTOM_BAR_CLASS =
@@ -2743,7 +2743,7 @@ export default function Dialer() {
           ? "flex h-full min-h-0 flex-1 flex-col"
           : "fixed inset-x-0 z-40 flex flex-col overflow-hidden bg-gradient-to-br from-[#F7F2F1] via-white to-[#F5EFEE] animate-[chat-in_0.22s_ease-out] dark:from-[#0c0d10] dark:via-[#120a0b] dark:to-black"
       }
-      style={isDesktop ? undefined : { top: vv?.top ?? 0, height: vv?.height ?? "100dvh" }}
+      style={isDesktop ? undefined : { top: vv?.top ?? 0, height: vv?.height ?? "100vh" }}
       onDragOver={(e) => {
         if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) {
           e.preventDefault();
@@ -3834,7 +3834,7 @@ export default function Dialer() {
   }
 
   return (
-    <div className="relative flex h-dvh w-full overflow-hidden bg-gradient-to-br from-[#F7F2F1] via-white to-[#F5EFEE] dark:from-[#0c0d10] dark:via-[#120a0b] dark:to-black">
+    <div className="relative flex h-viewport w-full overflow-hidden bg-gradient-to-br from-[#F7F2F1] via-white to-[#F5EFEE] dark:from-[#0c0d10] dark:via-[#120a0b] dark:to-black">
       <div className="pointer-events-none absolute -left-24 -top-32 h-96 w-96 rounded-full bg-[#C0272D]/20 blur-[120px] dark:bg-[#C0272D]/25" />
       <div className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-[#C0272D]/10 blur-[120px] dark:bg-[#C0272D]/10" />
 
@@ -4021,7 +4021,7 @@ export default function Dialer() {
           become unreachable by scroll in some browsers if the content ever
           grows taller than the viewport (e.g. an active call with every
           device picker and the DTMF pad open on a short laptop screen). */}
-      <aside className="hidden lg:flex lg:h-dvh lg:w-[360px] lg:shrink-0 lg:flex-col lg:overflow-y-auto lg:border-l lg:border-white/50 lg:bg-white/60 lg:px-6 lg:pb-6 lg:pt-16 lg:backdrop-blur-2xl lg:backdrop-saturate-150 dark:lg:border-white/10 dark:lg:bg-white/[0.04]">
+      <aside className="hidden lg:flex lg:h-viewport lg:w-[360px] lg:shrink-0 lg:flex-col lg:overflow-y-auto lg:border-l lg:border-white/50 lg:bg-white/60 lg:px-6 lg:pb-6 lg:pt-16 lg:backdrop-blur-2xl lg:backdrop-saturate-150 dark:lg:border-white/10 dark:lg:bg-white/[0.04]">
         {callPanelBody(false)}
       </aside>
 
