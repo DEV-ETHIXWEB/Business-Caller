@@ -298,8 +298,14 @@ const NAV_BUTTON_INACTIVE_CLASS = `${NAV_BUTTON_BASE_CLASS} text-slate-500 hover
 const BOTTOM_BAR_CLASS =
   "shrink-0 z-30 flex items-center justify-around border-t border-white/60 bg-white/85 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl backdrop-saturate-150 lg:hidden dark:border-white/10 dark:bg-[#0c0d10]/90";
 
+// bottom-20 (5rem) clears the bottom tab bar's height on a device with no
+// home-indicator safe area, but the bar itself grows taller on one that has
+// it (it pads for env(safe-area-inset-bottom)) while a plain bottom-20 never
+// did - so on exactly those devices this button would sink down behind the
+// now-taller bar. Adding the same inset keeps it clearing the bar on every
+// device, not just ones without a notch/home indicator.
 const FAB_CLASS =
-  "fixed bottom-20 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[0_15px_35px_-10px_rgba(192,39,45,0.6)] transition-all hover:brightness-110 active:scale-95 lg:bottom-8 lg:right-8";
+  "fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[0_15px_35px_-10px_rgba(192,39,45,0.6)] transition-all hover:brightness-110 active:scale-95 lg:bottom-8 lg:right-8";
 
 const MAIN_PANEL_CLASS =
   "flex h-full min-h-0 flex-1 flex-col rounded-[1.75rem] border border-white/70 bg-white/70 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_20px_50px_-20px_rgba(192,39,45,0.12),0_12px_28px_-15px_rgba(15,23,42,0.18)] backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-white/[0.04] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_20px_50px_-15px_rgba(192,39,45,0.2),0_15px_45px_-20px_rgba(0,0,0,0.8)]";
