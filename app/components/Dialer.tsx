@@ -286,8 +286,16 @@ const NAV_BUTTON_ACTIVE_CLASS = `${NAV_BUTTON_BASE_CLASS} bg-gradient-to-b from-
 
 const NAV_BUTTON_INACTIVE_CLASS = `${NAV_BUTTON_BASE_CLASS} text-slate-500 hover:bg-white/70 dark:text-slate-400 dark:hover:bg-white/10`;
 
+// A normal flex item at the end of the mobile column, not position:fixed -
+// a fixed element's "bottom: 0" is relative to the browser's own viewport,
+// and on some mobile browsers (Chrome's dynamic address/toolbar resizing
+// the visible area) that can leave a gap between the bar and the true
+// bottom edge until the browser's chrome settles. A flex item at the end of
+// a column sized to the dynamic viewport (h-dvh) has no such ambiguity: it
+// is, by definition, flush with the bottom of whatever space is actually
+// available, on every device.
 const BOTTOM_BAR_CLASS =
-  "fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-white/60 bg-white/85 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl backdrop-saturate-150 lg:hidden dark:border-white/10 dark:bg-[#0c0d10]/90";
+  "shrink-0 z-30 flex items-center justify-around border-t border-white/60 bg-white/85 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl backdrop-saturate-150 lg:hidden dark:border-white/10 dark:bg-[#0c0d10]/90";
 
 const FAB_CLASS =
   "fixed bottom-20 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] text-white shadow-[0_15px_35px_-10px_rgba(192,39,45,0.6)] transition-all hover:brightness-110 active:scale-95 lg:bottom-8 lg:right-8";
@@ -3952,6 +3960,58 @@ export default function Dialer() {
             <PhoneIcon className="h-5 w-5" />
           </button>
         )}
+
+        {/* Mobile bottom tab bar - an in-flow flex item (see BOTTOM_BAR_CLASS
+            for why it isn't position:fixed), so it's the last thing in this
+            column and always flush with the bottom of it. */}
+        <nav className={BOTTOM_BAR_CLASS}>
+          <button
+            type="button"
+            onClick={() => {
+              playTap();
+              setActiveTab("calls");
+            }}
+            className={activeTab === "calls" ? NAV_BUTTON_ACTIVE_CLASS : NAV_BUTTON_INACTIVE_CLASS}
+          >
+            <PhoneIcon className="h-5 w-5" />
+            Calls
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              playTap();
+              setActiveTab("texts");
+            }}
+            className={activeTab === "texts" ? NAV_BUTTON_ACTIVE_CLASS : NAV_BUTTON_INACTIVE_CLASS}
+          >
+            <span className="relative">
+              <MessageIcon className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span
+                  className={`absolute -right-2.5 -top-2 flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[0.625rem] font-bold leading-none ring-2 ${
+                    activeTab === "texts" ? "bg-white text-[#C0272D] ring-[#C0272D]" : "bg-[#C0272D] text-white ring-white dark:ring-[#0c0d10]"
+                  }`}
+                  role="status"
+                  aria-label={`${unreadCount} unread`}
+                >
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
+            </span>
+            Texts
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              playTap();
+              setActiveTab("contacts");
+            }}
+            className={activeTab === "contacts" ? NAV_BUTTON_ACTIVE_CLASS : NAV_BUTTON_INACTIVE_CLASS}
+          >
+            <PeopleIcon className="h-5 w-5" />
+            Contacts
+          </button>
+        </nav>
       </main>
 
       {/* Desktop dial pad - docked permanently on the right rather than
@@ -3964,56 +4024,6 @@ export default function Dialer() {
       <aside className="hidden lg:flex lg:h-dvh lg:w-[360px] lg:shrink-0 lg:flex-col lg:overflow-y-auto lg:border-l lg:border-white/50 lg:bg-white/60 lg:px-6 lg:pb-6 lg:pt-16 lg:backdrop-blur-2xl lg:backdrop-saturate-150 dark:lg:border-white/10 dark:lg:bg-white/[0.04]">
         {callPanelBody(false)}
       </aside>
-
-      {/* Mobile bottom tab bar */}
-      <nav className={BOTTOM_BAR_CLASS}>
-        <button
-          type="button"
-          onClick={() => {
-            playTap();
-            setActiveTab("calls");
-          }}
-          className={activeTab === "calls" ? NAV_BUTTON_ACTIVE_CLASS : NAV_BUTTON_INACTIVE_CLASS}
-        >
-          <PhoneIcon className="h-5 w-5" />
-          Calls
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            playTap();
-            setActiveTab("texts");
-          }}
-          className={activeTab === "texts" ? NAV_BUTTON_ACTIVE_CLASS : NAV_BUTTON_INACTIVE_CLASS}
-        >
-          <span className="relative">
-            <MessageIcon className="h-5 w-5" />
-            {unreadCount > 0 && (
-              <span
-                className={`absolute -right-2.5 -top-2 flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[0.625rem] font-bold leading-none ring-2 ${
-                  activeTab === "texts" ? "bg-white text-[#C0272D] ring-[#C0272D]" : "bg-[#C0272D] text-white ring-white dark:ring-[#0c0d10]"
-                }`}
-                role="status"
-                aria-label={`${unreadCount} unread`}
-              >
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            )}
-          </span>
-          Texts
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            playTap();
-            setActiveTab("contacts");
-          }}
-          className={activeTab === "contacts" ? NAV_BUTTON_ACTIVE_CLASS : NAV_BUTTON_INACTIVE_CLASS}
-        >
-          <PeopleIcon className="h-5 w-5" />
-          Contacts
-        </button>
-      </nav>
 
       {/* Phone: the open chat is a full-screen layer over everything, including
           the bottom tab bar (as in a messaging app). Sits below the call overlay
