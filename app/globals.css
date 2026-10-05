@@ -118,6 +118,23 @@ html[data-text-size="xlarge"] {
   font-size: 125%;
 }
 
+/* The document itself must never scroll. The app is one fixed-height shell
+   with its own internal overflow-y-auto panes (message threads, lists,
+   sheets); if <html>/<body> can scroll even by a pixel, iOS Safari's
+   "scroll the focused field into view" behaviour (triggered by any input
+   gaining focus, e.g. opening in-chat search) scrolls the whole page
+   instead, and because iOS does not reliably keep position:fixed elements
+   pinned to the viewport during that scroll, the chat header can end up
+   rendered above the visible screen until the page settles - the exact
+   "header missing" / overlapping-content glitch this was built to prevent.
+   With nothing to scroll at the document level, that class of bug can't
+   happen; every real scroll stays inside its own bounded pane. */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   /* No rubber-banding / pull-to-refresh bounce revealing the page behind. */
   overscroll-behavior: none;

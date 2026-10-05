@@ -112,7 +112,7 @@ function clearSession() {
 }
 
 type CallStatus = "ready" | "connecting" | "ringing" | "in-call" | "wrapping-up";
-type MicPermission = "checking" | "granted" | "denied";
+type MicPermission = "checking" | "granted" | "denied" | "prompt";
 
 interface CallParticipant {
   callSid: string;
@@ -1268,8 +1268,18 @@ export default function Dialer() {
     };
   }, []);
 
-  // Proactively ask for microphone access once unlocked, so the user sees a
-  // clear status instead of being surprised by the browser prompt mid-call.
+  // Checks microphone access once unlocked, without ever triggering the
+  // browser's permission dialog here - only the Permissions API, or (where a
+  // browser doesn't support querying it) looking for already-labelled
+  // devices, neither of which prompts. The actual ask for the microphone
+  // happens later, in dialNumber, at the moment the user taps Call. Calling
+  // getUserMedia speculatively on every app open used to re-ask the OS
+  // permission dialog each time the app was reopened/unlocked, which is not
+  // the same thing as the browser remembering a prior grant - most visibly
+  // on iOS, where a web app added to the home screen does not reliably keep
+  // a mic grant between launches. Asking only at the point of actual use
+  // means a user who never places a call never sees the prompt at all, and
+  // it ties the one real prompt to the tap that caused it.
   useEffect(() => {
     if (!unlocked) return;
 
@@ -1278,16 +1288,38 @@ export default function Dialer() {
     async function checkMic() {
       setMicPermission("checking");
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((track) => track.stop());
-        if (!cancelled) {
-          setMicPermission("granted");
-          // Device labels are blank until permission is granted, so refresh
-          // the picker lists now that they should be populated.
-          if (deviceRef.current) refreshDevices(deviceRef.current);
+        const permissions = navigator.permissions;
+        if (permissions?.query) {
+          const status = await permissions.query({ name: "microphone" as PermissionName });
+          if (cancelled) return;
+          if (status.state === "granted") {
+            setMicPermission("granted");
+            if (deviceRef.current) refreshDevices(deviceRef.current);
+          } else if (status.state === "denied") {
+            setMicPermission("denied");
+          } else {
+            setMicPermission("prompt");
+          }
+          return;
         }
       } catch {
-        if (!cancelled) setMicPermission("denied");
+        // "microphone" isn't a queryable permission name in this browser
+        // (older Safari) - fall through to the device-label check below.
+      }
+
+      try {
+        // A previously granted microphone shows real device labels from
+        // enumerateDevices without needing to call getUserMedia again.
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        if (cancelled) return;
+        if (devices.some((d) => d.kind === "audioinput" && d.label)) {
+          setMicPermission("granted");
+          if (deviceRef.current) refreshDevices(deviceRef.current);
+        } else {
+          setMicPermission("prompt");
+        }
+      } catch {
+        if (!cancelled) setMicPermission("prompt");
       }
     }
 
@@ -1970,7 +2002,23 @@ export default function Dialer() {
 
     setPhoneNumber(normalized);
 
-    if (callStatus !== "ready" || !deviceRef.current || micPermission !== "granted") return;
+    if (callStatus !== "ready" || !deviceRef.current || micPermission === "denied") return;
+
+    // The first real ask for the microphone happens right here, tied to this
+    // tap, instead of speculatively on every app open (see the mic-check
+    // effect above for why). If it's already granted this is a no-op check,
+    // not a second prompt.
+    if (micPermission !== "granted") {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+        setMicPermission("granted");
+        if (deviceRef.current) refreshDevices(deviceRef.current);
+      } catch {
+        setMicPermission("denied");
+        return;
+      }
+    }
 
     try {
       setCallStatus("connecting");
@@ -2244,7 +2292,7 @@ export default function Dialer() {
     await fetchConversations();
   }
 
-  const canCall = deviceReady && micPermission === "granted" && callStatus === "ready" && phoneNumber.trim().length > 0;
+  const canCall = deviceReady && micPermission !== "denied" && callStatus === "ready" && phoneNumber.trim().length > 0;
   const canHangUp = callStatus === "connecting" || callStatus === "ringing" || callStatus === "in-call";
 
   const statusLabel = (() => {
@@ -3005,6 +3053,7 @@ export default function Dialer() {
                       setActiveThread(number);
                     }}
                     onSaveContact={saveContactFromCard}
+                    onOpenInfo={() => setInfoMessage(m)}
                   />
                 </div>
               </div>
@@ -3856,7 +3905,7 @@ export default function Dialer() {
 
       {/* Main content */}
       <main className="relative flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-4 lg:hidden">
+        <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-[max(1rem,env(safe-area-inset-top))] lg:hidden">
           <Image src="/ethixweb-logo.png" alt="Ethixweb" width={120} height={20} className="h-4 w-auto dark:invert" />
           <div className="flex items-center gap-1.5">
             <button

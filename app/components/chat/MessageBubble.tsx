@@ -43,6 +43,7 @@ export interface BubbleProps {
   onRsvp: (answer: "YES" | "NO" | "MAYBE") => void;
   onMessageNumber: (number: string) => void;
   onSaveContact: (card: ContactCard) => void;
+  onOpenInfo: () => void;
 }
 
 const SWIPE_TRIGGER = 56;
@@ -73,7 +74,7 @@ export function MessageBubble(p: BubbleProps) {
     >
       {p.starred && <StarIcon filled className="h-2.5 w-2.5" />}
       <span>{new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-      {out && <MessageTicks status={m.status} />}
+      {out && <MessageTicks status={m.status} onOpenInfo={p.onOpenInfo} />}
     </span>
   );
 
