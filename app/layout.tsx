@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -28,11 +29,12 @@ export const viewport: Viewport = {
   themeColor: "#0c0d10",
   width: "device-width",
   initialScale: 1,
-  // Stops the browser zooming the page when a field is focused, so typing a
-  // message doesn't shove the whole layout around (the 16px rule in
-  // globals.css is what actually prevents iOS Safari's focus zoom; this
-  // covers the browsers that honour the viewport instead).
-  maximumScale: 1,
+  // Deliberately no `maximumScale`. Pinning it to 1 blocks pinch-zoom
+  // entirely, which fails WCAG 2.1 AA (1.4.4 Resize Text) and makes the
+  // app unusable for anyone who needs to magnify it. The reason it was
+  // here - iOS Safari zooming into a focused field - is already handled by
+  // the 16px minimum font size for inputs in globals.css, which is what
+  // actually suppresses that behaviour.
   // Draw under the notch/home-indicator; the UI pads for the safe areas.
   viewportFit: "cover",
   // Android Chrome: shrink the layout when the keyboard opens instead of
@@ -45,7 +47,13 @@ export const viewport: Viewport = {
 // Mirrors applySettings() in lib/settings.ts.
 const SETTINGS_BOOT_SCRIPT = `(function(){try{var s={};try{s=JSON.parse(localStorage.getItem("dialer_settings")||"{}")||{};}catch(x){}var r=document.documentElement;var d=s.theme==="dark"||((s.theme===undefined||s.theme==="system")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)r.classList.add("dark");r.dataset.textSize=s.textSize||"medium";r.dataset.wallpaper=s.wallpaper||"dots";r.dataset.bubble=s.bubbleTheme||"crimson";}catch(e){}})();`;
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Set per request by proxy.ts. The settings script below runs before
+  // first paint and is inline by necessity, so it carries the nonce the
+  // Content-Security-Policy names; without it the browser refuses to run
+  // it and the app flashes light before switching to the saved theme.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="en"
@@ -53,7 +61,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: SETTINGS_BOOT_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: SETTINGS_BOOT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

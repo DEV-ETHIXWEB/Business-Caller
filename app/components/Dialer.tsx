@@ -67,18 +67,33 @@ const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 interface StoredSession {
   username: string;
-  password: string;
+  /** Server-signed, short-lived. Never the password - see saveSession. */
+  sessionToken: string;
   expiresAt: number;
 }
 
+/** What gets spread into every API request body to say who is asking. */
 interface Credentials {
-  username: string;
-  password: string;
+  token: string;
 }
 
-function saveSession(username: string, password: string) {
+/**
+ * Remembers the signed-in session.
+ *
+ * This used to hold the person's actual password, which meant the password
+ * sat in storage for a fortnight where any script on the page could read
+ * it, went out again with every poll, and could not be revoked without
+ * changing APP_USERS and redeploying. It now holds only the token
+ * /api/token mints: it expires on its own, it is worthless anywhere else,
+ * and the password is typed once and never stored.
+ */
+function saveSession(username: string, sessionToken: string, ttlMs?: number) {
   try {
-    const session: StoredSession = { username, password, expiresAt: Date.now() + SESSION_TTL_MS };
+    const session: StoredSession = {
+      username,
+      sessionToken,
+      expiresAt: Date.now() + Math.min(ttlMs ?? SESSION_TTL_MS, SESSION_TTL_MS),
+    };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   } catch {
     // Storage can be unavailable (private browsing, quota) - worst case,
@@ -87,18 +102,27 @@ function saveSession(username: string, password: string) {
 }
 
 function loadSession(): Credentials | null {
+  const session = loadStoredSession();
+  return session ? { token: session.sessionToken } : null;
+}
+
+function loadStoredSession(): StoredSession | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const session = JSON.parse(raw) as Partial<StoredSession>;
-    if (typeof session.username !== "string" || typeof session.password !== "string" || typeof session.expiresAt !== "number") {
+    if (typeof session.username !== "string" || typeof session.sessionToken !== "string" || typeof session.expiresAt !== "number") {
+      // Includes the old password-bearing shape: treated as no session at
+      // all, so an upgrade quietly asks for the password once more rather
+      // than carrying the stored password forward.
+      localStorage.removeItem(SESSION_KEY);
       return null;
     }
     if (Date.now() > session.expiresAt) {
       localStorage.removeItem(SESSION_KEY);
       return null;
     }
-    return { username: session.username, password: session.password };
+    return session as StoredSession;
   } catch {
     return null;
   }
@@ -366,11 +390,14 @@ function callStatusLabel(entry: CallLogEntry): string {
   return entry.durationSeconds > 0 ? `${kind} · ${formatDuration(entry.durationSeconds)}` : kind;
 }
 
-async function requestToken(
-  username: string,
-  password: string,
-): Promise<{
+// Either a password (signing in) or an existing session token (renewing
+// the Twilio capability token while the session is still good).
+type TokenRequest = { username: string; password: string } | { token: string };
+
+async function requestToken(credentials: TokenRequest): Promise<{
   token: string;
+  sessionToken: string;
+  sessionTtlMs?: number;
   phoneNumber: string;
   label: string;
   avatarUrl?: string;
@@ -380,11 +407,13 @@ async function requestToken(
   const res = await fetch("/api/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify(credentials),
   });
 
   const data = (await res.json().catch(() => ({}))) as {
     token?: string;
+    sessionToken?: string;
+    sessionTtlMs?: number;
     phoneNumber?: string;
     label?: string;
     avatarUrl?: string;
@@ -393,12 +422,14 @@ async function requestToken(
     error?: string;
   };
 
-  if (!res.ok || !data.token || !data.phoneNumber) {
+  if (!res.ok || !data.token || !data.phoneNumber || !data.sessionToken) {
     throw new Error(data.error || "Unable to unlock the dialer.");
   }
 
   return {
     token: data.token,
+    sessionToken: data.sessionToken,
+    sessionTtlMs: data.sessionTtlMs,
     phoneNumber: data.phoneNumber,
     label: data.label ?? "",
     avatarUrl: data.avatarUrl,
@@ -632,6 +663,17 @@ function useVisualViewport(): { top: number; keyboardInset: number } | null {
   return { top, keyboardInset };
 }
 
+// Shown under a list that Twilio had more rows for than a single fetch
+// covers, so "the oldest ones are missing" is stated rather than left for
+// someone to notice.
+function TruncationNotice({ what }: { what: string }) {
+  return (
+    <p className="px-2 py-3 text-center text-[0.6875rem] text-slate-400 dark:text-slate-500" role="status">
+      Showing the most recent {what}. Older ones are still on your number, just not listed here.
+    </p>
+  );
+}
+
 export default function Dialer() {
   const [unlocked, setUnlocked] = useState(false);
   // True only for the brief moment while checking for a remembered
@@ -670,6 +712,11 @@ export default function Dialer() {
   const [activeTab, setActiveTab] = useState<"calls" | "texts" | "contacts">("calls");
   const [callLog, setCallLog] = useState<CallLogEntry[]>([]);
   const [callLogLoading, setCallLogLoading] = useState(false);
+  // True when Twilio had more history than one fetch covers, so the list
+  // below is the recent part rather than everything. Said out loud instead
+  // of letting older entries simply not appear.
+  const [callLogTruncated, setCallLogTruncated] = useState(false);
+  const [conversationsTruncated, setConversationsTruncated] = useState(false);
 
   // The "new call" screen - the keypad/number entry that used to be the
   // permanently-visible center card is now summoned on demand from the
@@ -1304,8 +1351,12 @@ export default function Dialer() {
         const saved = loadSession();
         if (!saved) return;
         try {
-          const { token: freshToken } = await requestToken(saved.username, saved.password);
+          const { token: freshToken, sessionToken, sessionTtlMs } = await requestToken(saved);
           device.updateToken(freshToken);
+          // Renewing the Twilio token renews the session alongside it, so
+          // an open tab stays signed in without ever re-sending a password.
+          const current = loadStoredSession();
+          if (current) saveSession(current.username, sessionToken, sessionTtlMs);
         } catch {
           // The token will simply expire; the next call attempt will surface
           // a clear "session expired" error via the device's own error event.
@@ -1374,28 +1425,26 @@ export default function Dialer() {
     // so every setState call below - including the early-exit case - never
     // runs synchronously within this effect's own call stack.
     const timer = setTimeout(async () => {
-      const saved = loadSession();
-      if (!saved) {
+      const stored = loadStoredSession();
+      if (!stored) {
         if (!cancelled) setCheckingSession(false);
         return;
       }
 
       try {
-        const { token, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus } = await requestToken(
-          saved.username,
-          saved.password,
-        );
+        const { token, sessionToken, sessionTtlMs, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus } =
+          await requestToken({ token: stored.sessionToken });
         if (cancelled) return;
-        saveSession(saved.username, saved.password);
+        saveSession(stored.username, sessionToken, sessionTtlMs);
         setCallerId(phoneNumber);
-        setSignedInUsername(saved.username);
+        setSignedInUsername(stored.username);
         setSignedInLabel(label);
         setAvatarUrl(fetchedAvatarUrl);
         setAbout(fetchedAbout ?? "");
         setStatus(fetchedStatus);
         await setupDevice(token);
         if (!cancelled) {
-          const cfg = loadLock(saved.username);
+          const cfg = loadLock(stored.username);
           setLockConfig(cfg);
           setAppLocked(!!cfg);
           setUnlocked(true);
@@ -1547,9 +1596,10 @@ export default function Dialer() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(saved),
       });
-      const data = (await res.json().catch(() => ({}))) as { conversations?: ConversationSummary[] };
+      const data = (await res.json().catch(() => ({}))) as { conversations?: ConversationSummary[]; truncated?: boolean };
       if (res.ok && data.conversations) {
         setConversations(data.conversations);
+        setConversationsTruncated(!!data.truncated);
       }
     } catch {
       // Silent - the list simply refreshes next time it's shown.
@@ -1631,9 +1681,10 @@ export default function Dialer() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(saved),
       });
-      const data = (await res.json().catch(() => ({}))) as { calls?: CallLogEntry[] };
+      const data = (await res.json().catch(() => ({}))) as { calls?: CallLogEntry[]; truncated?: boolean };
       if (res.ok && data.calls) {
         setCallLog(data.calls);
+        setCallLogTruncated(!!data.truncated);
       }
     } catch {
       // Silent - the list simply refreshes next time the tab is shown.
@@ -1840,14 +1891,18 @@ export default function Dialer() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, response: assertion, expectedChallenge: optsData.options.challenge }),
       });
-      const verifyData = (await verifyRes.json().catch(() => ({}))) as { username?: string; password?: string };
-      if (!verifyRes.ok || !verifyData.username || !verifyData.password) throw new Error("Could not verify.");
+      const verifyData = (await verifyRes.json().catch(() => ({}))) as {
+        username?: string;
+        sessionToken?: string;
+        sessionTtlMs?: number;
+      };
+      if (!verifyRes.ok || !verifyData.username || !verifyData.sessionToken) throw new Error("Could not verify.");
 
-      const { token, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus } = await requestToken(
-        verifyData.username,
-        verifyData.password,
-      );
-      saveSession(verifyData.username, verifyData.password);
+      // The device proved who this is; the server answered with a session
+      // token, so no password is involved on this path at all.
+      const { token, sessionToken, sessionTtlMs, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus } =
+        await requestToken({ token: verifyData.sessionToken });
+      saveSession(verifyData.username, sessionToken, sessionTtlMs ?? verifyData.sessionTtlMs);
       setCallerId(phoneNumber);
       setSignedInUsername(verifyData.username);
       setSignedInLabel(label);
@@ -2060,8 +2115,11 @@ export default function Dialer() {
     setUnlocking(true);
     try {
       const username = usernameInput.trim();
-      const { token, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus } = await requestToken(username, passwordInput);
-      saveSession(username, passwordInput);
+      const { token, sessionToken, sessionTtlMs, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus } =
+        await requestToken({ username, password: passwordInput });
+      saveSession(username, sessionToken, sessionTtlMs);
+      // The password was needed for exactly this one request.
+      setPasswordInput("");
       setCallerId(phoneNumber);
       setSignedInUsername(username);
       setSignedInLabel(label);
@@ -2623,6 +2681,7 @@ export default function Dialer() {
             {callLog.length === 0 ? "No calls yet. Tap the button below to make one." : "No calls match your search."}
           </p>
         )}
+        {callLogTruncated && !callsSearch.trim() && <TruncationNotice what="calls" />}
         {filteredCalls.map((entry, i) => {
           const name = contacts.find((ct) => ct.number === entry.with)?.name;
           const missed = MISSED_STATUSES.has(entry.status);
@@ -3605,6 +3664,7 @@ export default function Dialer() {
             onToast={setToast}
             showLocked={showLockedChats}
           />
+          {conversationsTruncated && !textsSearch.trim() && <TruncationNotice what="conversations" />}
     </div>
   );
 

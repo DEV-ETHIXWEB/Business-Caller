@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getClientIp, rateLimit } from "./rateLimit";
+import { burnPasswordWork, verifyPassword } from "./password";
+import { readSessionToken } from "./session";
 import { findUserByUsername, type AppUser } from "./users";
 
 function safeEqual(a: string, b: string): boolean {
@@ -11,15 +13,35 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 /**
- * Looks up a user by username and checks their password with a
- * constant-time comparison.
+ * Looks up a user by username and checks their password.
+ *
+ * An unknown username still does the hashing work (burnPasswordWork)
+ * before giving up. Returning early instead would make a wrong username
+ * measurably faster than a wrong password, which hands an attacker the
+ * list of real usernames for free - the first thing they need before
+ * trying to guess anyone's password.
  */
 export function verifyUserCredentials(username: string, password: string): AppUser | null {
   if (!username || !password) return null;
   const user = findUserByUsername(username);
-  if (!user) return null;
-  if (!safeEqual(password, user.password)) return null;
+  if (!user) {
+    burnPasswordWork(password);
+    return null;
+  }
+  if (user.passwordHash) {
+    if (!verifyPassword(password, user.passwordHash)) return null;
+    return user;
+  }
+  // Legacy plaintext entry - see AppUser.password. Still constant-time.
+  if (!user.password || !safeEqual(password, user.password)) return null;
   return user;
+}
+
+/** The user a valid session token belongs to, or null. */
+export function userFromSessionToken(token: string): AppUser | null {
+  const claims = readSessionToken(token);
+  if (!claims) return null;
+  return findUserByUsername(claims.username) ?? null;
 }
 
 export interface RequireUserOptions {
@@ -83,12 +105,29 @@ export async function requireUser(
   }
 
   const fields = (body ?? {}) as Record<string, unknown>;
-  const username = typeof fields.username === "string" ? fields.username : "";
-  const password = typeof fields.password === "string" ? fields.password : "";
 
-  const user = verifyUserCredentials(username, password);
+  // A session token is the normal way in: /api/token mints one at sign-in
+  // and the browser sends that instead of the password from then on, so
+  // the password crosses the wire once per session rather than on every
+  // poll. Username/password is still accepted so that /api/token itself
+  // has something to authenticate, and so a client holding an expired
+  // token can sign back in.
+  const token = typeof fields.token === "string" ? fields.token : "";
+  const user = token
+    ? userFromSessionToken(token)
+    : verifyUserCredentials(
+        typeof fields.username === "string" ? fields.username : "",
+        typeof fields.password === "string" ? fields.password : "",
+      );
+
   if (!user) {
-    return { ok: false, response: NextResponse.json({ error: "Invalid username or password." }, { status: 401 }) };
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: token ? "Your session has expired. Please sign in again." : "Invalid username or password." },
+        { status: 401 },
+      ),
+    };
   }
 
   return { ok: true, data: { user, body: fields } };

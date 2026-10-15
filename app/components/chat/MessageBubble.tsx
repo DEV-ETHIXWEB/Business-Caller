@@ -119,9 +119,13 @@ export function MessageBubble(p: BubbleProps) {
     setDx(0);
   }
 
+  // `break-words` so a long unbroken run - a URL, a reference number, a
+  // word in a language that does not space out - wraps instead of pushing
+  // the bubble wider than the column it is allowed. It showed up as a few
+  // pixels of overflow on a 320px-wide screen.
   const bubbleClass = emojiOnly
     ? "px-1 py-0.5"
-    : `${hasMedia || structured ? "p-1" : "px-3 py-1.5"} shadow-[0_1px_1.5px_rgba(15,23,42,0.14)] ${
+    : `${hasMedia || structured ? "p-1" : "px-3 py-1.5"} min-w-0 break-words [overflow-wrap:anywhere] shadow-[0_1px_1.5px_rgba(15,23,42,0.14)] ${
         out
           ? `rounded-2xl bubble-out ${p.grouped ? "" : "bubble-tail-out rounded-tr-none"}`
           : `rounded-2xl bg-white text-slate-800 dark:bg-[#26272c] dark:text-slate-100 ${p.grouped ? "" : "bubble-tail-in rounded-tl-none"}`

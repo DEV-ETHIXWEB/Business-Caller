@@ -442,6 +442,67 @@ empty TwiML, or clear whatever's causing the fallback. This app doesn't
 touch that setting, it wasn't asked to, but it's worth knowing about
 since it's live right now.
 
+## Security
+
+How sign-in works, and what to do when rotating anything.
+
+**Passwords are hashed, not stored.** Each `APP_USERS` entry carries a
+`passwordHash` (scrypt), generated with:
+
+```bash
+npm run hash-password -- 'the password'
+```
+
+The plaintext `password` field is still read so an existing deployment
+keeps working, but it logs a warning on every cold start. Replace it.
+
+Note the hash uses `:` as its separator, not the conventional `$`. These
+values live in an environment variable, and env loaders expand `$NAME`
+inside values - a `$`-separated hash came back as the bare word `scrypt`
+and silently refused every password. There is a test pinning this.
+
+**The browser holds a session token, not a password.** Signing in returns a
+short-lived signed token; every later request sends that. The password
+crosses the wire once and is never written to storage. Changing
+`SESSION_SECRET` invalidates every outstanding session at once, which is
+how you sign everybody out.
+
+**Brute force is bounded by an account lockout.** Eight wrong passwords in
+fifteen minutes locks that account for fifteen minutes, counted in Twilio
+Sync so every serverless instance sees the same tally. The per-IP limiter
+in `lib/rateLimit.ts` is still there, but it only ever sees one instance -
+on Vercel, concurrent requests land on many, which is why it cannot be the
+defence on its own.
+
+The counter is read-modify-write, not an atomic increment, so a single
+burst of simultaneous guesses can slip a few past the limit before the
+record catches up. The burst after it is refused. If you ever need a hard
+guarantee, back `lib/loginGuard.ts` with Redis `INCR` instead.
+
+**Content-Security-Policy.** `proxy.ts` sets one per request with a fresh
+nonce (`strict-dynamic`), so only scripts this server emitted can run. That
+is why `app/page.tsx` calls `connection()` - a nonce has to be per-request,
+so the page cannot be prerendered at build time. If you add a third-party
+script, image host or API, it needs a line in the policy there or the
+browser will refuse it; check the console for "Refused to..." after any
+such change.
+
+**If you rotate credentials:** `SESSION_SECRET` signs everyone out.
+`TWILIO_API_KEY_SECRET` does too *if* `SESSION_SECRET` is unset, since the
+signing keys are derived from it as a fallback - set `SESSION_SECRET` and
+the two become independent.
+
+## Tests
+
+```bash
+npm test
+```
+
+Covers password hashing, session-token forgery, the per-purpose signing
+keys, attachment-link tampering, and the rule deciding whose copy of a
+message is whose. They run on Node's own test runner through `tsx`; there
+is no test database and nothing touches Twilio.
+
 ## Environment variables reference
 
 | Variable | Where it comes from | Secret? |
@@ -452,7 +513,8 @@ since it's live right now.
 | `TWILIO_AUTH_TOKEN` | Console → Settings → Account settings → Account details & security | **Yes** |
 | `TWILIO_TWIML_APP_SID` | The "Business Caller" TwiML App you created | No, but keep private |
 | `TWILIO_SYNC_SERVICE_SID` | A Sync Service (Console → Explore Products → Sync → Services), used to store each person's Phone Book and Face ID/Touch ID credentials | No, but keep private |
-| `APP_USERS` | A JSON array, one entry per person: `[{"username":"amar","password":"...","phoneNumber":"+12064523433","label":"Amar"}, ...]`. Each `phoneNumber` must be a Voice-enabled Twilio number on your account | **Yes** |
+| `APP_USERS` | A JSON array, one entry per person: `[{"username":"amar","passwordHash":"scrypt:...:...","phoneNumber":"+12064523433","label":"Amar","forwardTo":"+91..."}, ...]`. Generate each hash with `npm run hash-password -- 'the password'`. Each `phoneNumber` must be a Voice-enabled Twilio number on your account; `forwardTo` is optional (see "Calls coming in") | **Yes** |
+| `SESSION_SECRET` | 32 random bytes you generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Signs session tokens and attachment links. Optional - falls back to deriving from `TWILIO_API_KEY_SECRET` - but setting it means rotating Twilio keys doesn't sign everyone out | **Yes** |
 | `PUBLIC_BASE_URL` | Your deployed Vercel URL, no trailing slash | No |
 | `BLOB_READ_WRITE_TOKEN` | Vercel dashboard → Project → Storage → create a Blob store and attach it (Vercel adds this automatically) | **Yes**, but only for profile photo upload/removal |
 
@@ -480,7 +542,12 @@ app/
   lib/emoji.ts             The emoji picker's data, search and recents
   lib/voice.ts             Records a voice note and encodes it to a small mono WAV
   lib/imageResize.ts       Shrinks a picked photo to fit the outgoing size budget
-  api/token/route.ts       Mints Twilio Access Tokens for the signed-in user (server-side, gated by APP_USERS); also returns their avatarUrl
+  api/token/route.ts       Mints Twilio Access Tokens plus this app's own session token; enforces the account lockout on failed sign-ins
+  lib/session.ts           Issues and verifies the short-lived signed token the browser sends instead of a password
+  lib/password.ts          scrypt hashing for APP_USERS passwords (colon-separated, so env expansion can't mangle it)
+  lib/loginGuard.ts        Failed-sign-in counter and lockout, kept in Twilio Sync so every serverless instance shares it
+  lib/secrets.ts           Derives a separate signing key per purpose (session tokens, attachment links) via HKDF
+  proxy.ts                 Per-request Content-Security-Policy with a fresh nonce
   api/voice/route.ts       TwiML webhook Twilio calls to place the outbound leg; resolves caller ID from the caller's identity
   api/voice/incoming/route.ts  TwiML webhook for a call *to* one of the numbers: rings that person's browser (and their forwardTo phone) under the caller's own number
   api/sms/route.ts         Sends outbound SMS or MMS (voice note, photo, forwarded attachment) via the Twilio REST API, from the signed-in user's own number

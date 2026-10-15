@@ -8,7 +8,10 @@ import type { CallLogEntry } from "@/lib/callLog";
 export const runtime = "nodejs";
 
 const IP_RATE_WINDOW_MS = 5 * 60 * 1000;
-const FETCH_LIMIT = 100;
+// As in the conversations route: 100 was reached in normal use, which
+// silently cut the history short. `truncated` tells the UI when there is
+// more than this behind it.
+const FETCH_LIMIT = 400;
 
 const REQUIRED_ENV_VARS = ["TWILIO_ACCOUNT_SID", "TWILIO_API_KEY_SID", "TWILIO_API_KEY_SECRET", "APP_USERS"] as const;
 
@@ -84,7 +87,8 @@ export async function POST(req: Request) {
     }
 
     const calls = Array.from(bySid.values()).sort((a, b) => b.at - a.at);
-    return NextResponse.json({ calls });
+    const truncated = outbound.length >= FETCH_LIMIT || inbound.length >= FETCH_LIMIT;
+    return NextResponse.json({ calls, truncated });
   } catch (err) {
     console.error("[api/calls] Twilio fetch failed:", err);
     return NextResponse.json({ error: "Failed to load call history." }, { status: 502 });

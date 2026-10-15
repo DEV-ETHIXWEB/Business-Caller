@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sign } from "@/lib/secrets";
 import { generateAuthenticationOptions } from "@simplewebauthn/server";
 import { getClientIp, rateLimit } from "@/lib/rateLimit";
 import { getRpID } from "@/lib/webauthn";
@@ -32,6 +33,14 @@ const REQUIRED_ENV_VARS = [
 // the much better sign-in experience. An unknown username behaves
 // identically to a known one with zero devices, so this can't be used to
 // discover which usernames exist.
+// A base64url credential id that is stable per username and matches no
+// real authenticator. Signed so it cannot be distinguished from a genuine
+// id by its shape or guessed without the server's key.
+function decoyCredentialId(username: string): string {
+  const hex = sign("session-token", `webauthn-decoy:${username}`) || username.padEnd(64, "0");
+  return Buffer.from(hex.slice(0, 64), "hex").toString("base64url");
+}
+
 export async function POST(req: Request) {
   for (const key of REQUIRED_ENV_VARS) {
     if (!process.env[key]) {
@@ -79,10 +88,23 @@ export async function POST(req: Request) {
   const user = findUserByUsername(username);
   const stored = user ? await readCredentials(getWebAuthnClient(), user.username) : [];
 
+  // An unknown username must look exactly like a known one. Returning the
+  // real (empty) list for a name that doesn't exist, while a registered
+  // person's name returns their credential ids, turns this endpoint into a
+  // free "is this a real account?" oracle - the list an attacker wants
+  // before trying to guess anyone's password. So when there is nothing
+  // real to offer, one decoy is offered instead. It is derived from the
+  // username rather than random, so asking twice gives the same answer
+  // (random ids would be their own tell), and it simply fails to match any
+  // authenticator, which is what an unregistered account does anyway.
+  const allowCredentials = stored.length
+    ? stored.map((c) => ({ id: c.id, transports: c.transports }))
+    : [{ id: decoyCredentialId(username) }];
+
   const options = await generateAuthenticationOptions({
     rpID,
     userVerification: "required",
-    allowCredentials: stored.map((c) => ({ id: c.id, transports: c.transports })),
+    allowCredentials,
   });
 
   return NextResponse.json({ options });

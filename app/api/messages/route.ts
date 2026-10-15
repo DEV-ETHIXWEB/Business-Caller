@@ -83,7 +83,7 @@ export async function POST(req: Request) {
         // rather than failing the whole thread.
         if (Number(m.numMedia) > 0) {
           try {
-            const media = await getMessageMedia(client, m.sid);
+            const media = await getMessageMedia(client, m.sid, user.username);
             if (media.length) message.media = media;
           } catch (err) {
             console.warn("[api/messages] Could not load attachments for", m.sid, err);
@@ -129,7 +129,12 @@ export async function DELETE(req: Request) {
     // confirm before deleting, so one person can't delete another
     // person's messages even if they somehow had the SID.
     const message = await client.messages(sid).fetch();
-    if (message.to !== user.phoneNumber && message.from !== user.phoneNumber) {
+    // isOurCopy, not a loose "touches our number" test: a text between two
+    // colleagues leaves two records with identical from/to, and the loose
+    // test passed for both - so knowing a SID was enough to delete the
+    // colleague's copy out of their own thread. Same rule as the thread
+    // and the conversation list.
+    if (!isOurCopy(message, user.phoneNumber)) {
       return NextResponse.json({ error: "Message not found." }, { status: 404 });
     }
     await client.messages(sid).remove();

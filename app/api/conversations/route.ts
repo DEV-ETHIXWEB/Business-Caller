@@ -12,7 +12,12 @@ export const runtime = "nodejs";
 // Read-only against Twilio, fetched once whenever the Messages panel's
 // conversation list is shown (not polled continuously like /api/messages).
 const IP_RATE_WINDOW_MS = 5 * 60 * 1000;
-const FETCH_LIMIT = 100;
+// Twilio pages its message list; this is how many of the most recent each
+// direction we pull to build the inbox. Raised from 100 because a busy
+// number blew past it in weeks and the oldest conversations then dropped
+// off the list with nothing to say they had. `truncated` in the response
+// tells the UI when even this was not enough.
+const FETCH_LIMIT = 400;
 
 const REQUIRED_ENV_VARS = ["TWILIO_ACCOUNT_SID", "TWILIO_API_KEY_SID", "TWILIO_API_KEY_SECRET", "APP_USERS"] as const;
 
@@ -73,7 +78,7 @@ export async function POST(req: Request) {
         .slice(0, 30)
         .map(async ([number, v]) => {
           try {
-            const media = await getMessageMedia(client, v.sid);
+            const media = await getMessageMedia(client, v.sid, user.username);
             const summary = byNumber.get(number);
             if (summary && media[0]) summary.lastKind = media[0].kind;
           } catch {
@@ -83,7 +88,11 @@ export async function POST(req: Request) {
     );
 
     const conversations = Array.from(byNumber.values()).sort((a, b) => b.lastAt - a.lastAt);
-    return NextResponse.json({ conversations });
+    // Hitting the ceiling in either direction means there are older texts
+    // we did not look at, so a conversation could be missing from this
+    // list entirely. The UI says so rather than quietly showing less.
+    const truncated = sent.length >= FETCH_LIMIT || received.length >= FETCH_LIMIT;
+    return NextResponse.json({ conversations, truncated });
   } catch (err) {
     console.error("[api/conversations] Twilio fetch failed:", err);
     return NextResponse.json({ error: "Failed to load conversations." }, { status: 502 });

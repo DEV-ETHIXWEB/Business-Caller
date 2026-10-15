@@ -1,6 +1,6 @@
-import { createHmac, timingSafeEqual } from "crypto";
 import type twilio from "twilio";
-import { mediaKind, type ThreadMedia } from "@/lib/messageThread";
+import { mediaKind, type ThreadMedia } from "./messageThread";
+import { sign, verify } from "./secrets";
 
 // Server-only. Attachments (MMS) live in Twilio behind account credentials,
 // which a browser <audio> or <img> tag cannot send. So the thread API hands
@@ -12,29 +12,40 @@ const SIGN_WINDOW_SECONDS = 6 * 60 * 60;
 export const MESSAGE_SID_RE = /^(SM|MM)[0-9a-fA-F]{32}$/;
 export const MEDIA_SID_RE = /^ME[0-9a-fA-F]{32}$/;
 
-function secret(): string {
-  return process.env.TWILIO_API_KEY_SECRET || "";
-}
-
-function signature(messageSid: string, mediaSid: string, exp: number): string {
-  return createHmac("sha256", secret()).update(`${messageSid}.${mediaSid}.${exp}`).digest("hex");
+// The link is bound to the person it was issued to. Without the username
+// in here, any signed link worked for anyone who ever saw it - a
+// screenshot, a browser history entry, a referrer - for as long as it had
+// left to run. The signing key is derived per-purpose (lib/secrets.ts), so
+// it is no longer the Twilio API key doing double duty either.
+function payload(username: string, messageSid: string, mediaSid: string, exp: number): string {
+  return `${username}.${messageSid}.${mediaSid}.${exp}`;
 }
 
 // The expiry is rounded up to a 6 hour boundary, so the link for a given
 // attachment stays identical between the 5 second polls (no image reloading
 // or audio resetting) and only changes a few times a day.
-export function signedMediaUrl(messageSid: string, mediaSid: string): string {
+export function signedMediaUrl(username: string, messageSid: string, mediaSid: string): string {
   const now = Math.floor(Date.now() / 1000);
   const exp = (Math.floor(now / SIGN_WINDOW_SECONDS) + 2) * SIGN_WINDOW_SECONDS;
-  const params = new URLSearchParams({ m: messageSid, a: mediaSid, e: String(exp), s: signature(messageSid, mediaSid, exp) });
+  const params = new URLSearchParams({
+    m: messageSid,
+    a: mediaSid,
+    e: String(exp),
+    u: username,
+    s: sign("media-link", payload(username, messageSid, mediaSid, exp)),
+  });
   return `/api/media?${params.toString()}`;
 }
 
-export function verifyMediaSignature(messageSid: string, mediaSid: string, exp: number, sig: string): boolean {
-  if (!secret() || !Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return false;
-  const expected = Buffer.from(signature(messageSid, mediaSid, exp));
-  const given = Buffer.from(sig);
-  return expected.length === given.length && timingSafeEqual(expected, given);
+export function verifyMediaSignature(
+  username: string,
+  messageSid: string,
+  mediaSid: string,
+  exp: number,
+  sig: string,
+): boolean {
+  if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return false;
+  return verify("media-link", payload(username, messageSid, mediaSid, exp), sig);
 }
 
 interface RawMedia {
@@ -54,7 +65,11 @@ function isDisplayable(contentType: string): boolean {
   return !(type.startsWith("application/smil") || type.startsWith("text/plain"));
 }
 
-export async function getMessageMedia(client: ReturnType<typeof twilio>, messageSid: string): Promise<ThreadMedia[]> {
+export async function getMessageMedia(
+  client: ReturnType<typeof twilio>,
+  messageSid: string,
+  username: string,
+): Promise<ThreadMedia[]> {
   let raw = mediaListCache.get(messageSid);
   if (!raw) {
     const list = await client.messages(messageSid).media.list({ limit: 6 });
@@ -68,7 +83,7 @@ export async function getMessageMedia(client: ReturnType<typeof twilio>, message
       sid: m.sid,
       contentType: m.contentType,
       kind: mediaKind(m.contentType),
-      url: signedMediaUrl(messageSid, m.sid),
+      url: signedMediaUrl(username, messageSid, m.sid),
     }));
 }
 

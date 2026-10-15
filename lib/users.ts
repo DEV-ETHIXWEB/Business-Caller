@@ -19,7 +19,16 @@
 export interface AppUser {
   /** Login username, e.g. "prateek". Case-sensitive, must be unique. */
   username: string;
-  password: string;
+  /**
+   * Plaintext password. Deprecated and only still read so an existing
+   * deployment keeps working across this change - set `passwordHash`
+   * instead (see lib/password.ts for how to generate one). A plaintext
+   * entry means anyone who can read the environment - a dashboard viewer,
+   * a logged env dump, a leaked backup - reads the password itself.
+   */
+  password?: string;
+  /** scrypt hash of the password, as `scrypt$<salt hex>$<key hex>`. Preferred. */
+  passwordHash?: string;
   /** This user's Twilio number, in E.164 - their caller ID and SMS sender. */
   phoneNumber: string;
   /** Voice Grant identity for this user. Twilio reports it back as
@@ -44,6 +53,7 @@ export interface AppUser {
 interface RawAppUser {
   username?: unknown;
   password?: unknown;
+  passwordHash?: unknown;
   phoneNumber?: unknown;
   label?: unknown;
   forwardTo?: unknown;
@@ -72,18 +82,25 @@ function parseUsers(): AppUser[] {
 
   const users: AppUser[] = [];
   for (const entry of parsed as RawAppUser[]) {
+    const hasSecret = isNonEmptyString(entry.passwordHash) || isNonEmptyString(entry.password);
     if (
       !isNonEmptyString(entry.username) ||
-      !isNonEmptyString(entry.password) ||
+      !hasSecret ||
       !isNonEmptyString(entry.phoneNumber) ||
       !isNonEmptyString(entry.label)
     ) {
       console.error("[lib/users] Skipping an APP_USERS entry missing a required field.");
       continue;
     }
+    if (!isNonEmptyString(entry.passwordHash)) {
+      console.warn(
+        `[lib/users] "${entry.username}" still uses a plaintext password. Replace "password" with "passwordHash" - see README, Environment variables.`,
+      );
+    }
     users.push({
       username: entry.username,
-      password: entry.password,
+      ...(isNonEmptyString(entry.password) ? { password: entry.password } : {}),
+      ...(isNonEmptyString(entry.passwordHash) ? { passwordHash: entry.passwordHash.trim() } : {}),
       phoneNumber: entry.phoneNumber,
       label: entry.label,
       identity: `dialer-${entry.username}`,

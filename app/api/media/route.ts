@@ -32,8 +32,13 @@ export async function GET(req: Request) {
   const mediaSid = url.searchParams.get("a") ?? "";
   const exp = Number(url.searchParams.get("e"));
   const sig = url.searchParams.get("s") ?? "";
+  const username = url.searchParams.get("u") ?? "";
 
-  if (!MESSAGE_SID_RE.test(messageSid) || !MEDIA_SID_RE.test(mediaSid) || !verifyMediaSignature(messageSid, mediaSid, exp, sig)) {
+  if (
+    !MESSAGE_SID_RE.test(messageSid) ||
+    !MEDIA_SID_RE.test(mediaSid) ||
+    !verifyMediaSignature(username, messageSid, mediaSid, exp, sig)
+  ) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 

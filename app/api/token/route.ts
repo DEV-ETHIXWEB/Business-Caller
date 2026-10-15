@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
-import { requireUser } from "@/lib/auth";
+import { userFromSessionToken, verifyUserCredentials } from "@/lib/auth";
+import { checkLockout, clearFailures, recordFailure } from "@/lib/loginGuard";
+import { getClientIp, rateLimit } from "@/lib/rateLimit";
+import { issueSessionToken, SESSION_TTL_MS } from "@/lib/session";
 import { getProfileClient, readProfile, type Profile } from "@/lib/profileStore";
 
 // Requires Node's crypto module (timingSafeEqual, and the twilio SDK's own
@@ -19,16 +22,58 @@ const REQUIRED_ENV_VARS = [
 ] as const;
 
 export async function POST(req: Request) {
-  const auth = await requireUser(req, {
-    rateLimitKey: "token",
-    // Applies to every request, valid login or not, so a script can't
-    // hammer this looking for a working username/password.
-    limit: 15,
-    windowMs: 5 * 60 * 1000,
-    requiredEnvVars: REQUIRED_ENV_VARS,
-  });
-  if (!auth.ok) return auth.response;
-  const { user } = auth.data;
+  for (const key of REQUIRED_ENV_VARS) {
+    if (!process.env[key]) {
+      console.error(`[api/token] Missing required environment variable: ${key}`);
+      return NextResponse.json({ error: "Server misconfiguration. Please contact the administrator." }, { status: 500 });
+    }
+  }
+
+  // Per-IP, in-memory: free and instant, and sheds most junk - but it only
+  // sees one serverless instance, so it is the first line, not the defence.
+  const ip = getClientIp(req);
+  const perIp = rateLimit(`token:${ip}`, 15, 5 * 60 * 1000);
+  if (!perIp.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a few minutes and try again." },
+      { status: 429, headers: { "Retry-After": Math.ceil(perIp.retryAfterMs / 1000).toString() } },
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+  const fields = (body ?? {}) as Record<string, unknown>;
+  const username = typeof fields.username === "string" ? fields.username : "";
+  const password = typeof fields.password === "string" ? fields.password : "";
+  const presentedToken = typeof fields.token === "string" ? fields.token : "";
+
+  let user = presentedToken ? userFromSessionToken(presentedToken) : null;
+
+  if (!user) {
+    // The real brute-force defence: a counter every instance shares, keyed
+    // by the account being attacked rather than by an IP the attacker
+    // chooses. See lib/loginGuard.ts.
+    if (username) {
+      const lock = await checkLockout(username);
+      if (lock.locked) {
+        return NextResponse.json(
+          { error: "Too many failed sign-ins. This account is locked for a few minutes." },
+          { status: 429, headers: { "Retry-After": Math.ceil(lock.retryAfterMs / 1000).toString() } },
+        );
+      }
+    }
+
+    user = verifyUserCredentials(username, password);
+    if (!user) {
+      if (username) await recordFailure(username);
+      return NextResponse.json({ error: "Invalid username or password." }, { status: 401 });
+    }
+    await clearFailures(user.username);
+  }
 
   const AccessToken = twilio.jwt.AccessToken;
   const VoiceGrant = AccessToken.VoiceGrant;
@@ -61,6 +106,10 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     token: accessToken.toJwt(),
+    // The browser's own credential from here on - it replaces the password
+    // in every later API call, and in what the page keeps in storage.
+    sessionToken: issueSessionToken(user.username),
+    sessionTtlMs: SESSION_TTL_MS,
     identity: user.identity,
     ttlSeconds: TOKEN_TTL_SECONDS,
     phoneNumber: user.phoneNumber,

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { clearFailures } from "@/lib/loginGuard";
+import { issueSessionToken, SESSION_TTL_MS } from "@/lib/session";
 import { verifyAuthenticationResponse, type AuthenticationResponseJSON } from "@simplewebauthn/server";
 import { getClientIp, rateLimit } from "@/lib/rateLimit";
 import { getRpID, getExpectedOrigin } from "@/lib/webauthn";
@@ -115,5 +117,16 @@ export async function POST(req: Request) {
   );
   await writeCredentials(client, user.username, next);
 
-  return NextResponse.json({ username: user.username, password: user.password });
+  // A session token, never the password. This route used to hand the
+  // account's real password back to the browser, which put it on the wire
+  // and into the page on every biometric unlock - and would simply stop
+  // working once passwords are stored as hashes. The token is the same
+  // credential /api/token issues, so the caller is signed in exactly as if
+  // they had typed the password, without the password existing here at all.
+  await clearFailures(user.username);
+  return NextResponse.json({
+    username: user.username,
+    sessionToken: issueSessionToken(user.username),
+    sessionTtlMs: SESSION_TTL_MS,
+  });
 }
