@@ -28,6 +28,17 @@ export interface AppUser {
   identity: string;
   /** Shown in the UI ("Calling from ...") and in device-management lists. */
   label: string;
+  /**
+   * Optional: a personal phone to ring at the same time as the browser when
+   * someone calls this user's Twilio number (E.164). This is what takes over
+   * the plain call-forwarding that used to be configured straight on the
+   * number in Twilio Console - with the difference that the forwarded call
+   * now carries the *original caller's* number as its caller ID, so the
+   * phone that rings shows who is really calling instead of showing this
+   * user's own Twilio number back at them. Leave it out and only the browser
+   * dialer rings.
+   */
+  forwardTo?: string;
 }
 
 interface RawAppUser {
@@ -35,6 +46,7 @@ interface RawAppUser {
   password?: unknown;
   phoneNumber?: unknown;
   label?: unknown;
+  forwardTo?: unknown;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -75,6 +87,7 @@ function parseUsers(): AppUser[] {
       phoneNumber: entry.phoneNumber,
       label: entry.label,
       identity: `dialer-${entry.username}`,
+      ...(isNonEmptyString(entry.forwardTo) ? { forwardTo: entry.forwardTo.trim() } : {}),
     });
   }
   return users;
@@ -95,4 +108,11 @@ export function findUserByUsername(username: string): AppUser | undefined {
 
 export function findUserByIdentity(identity: string): AppUser | undefined {
   return getUsers().find((u) => u.identity === identity);
+}
+
+/** Which user a call or text arriving on one of our numbers belongs to.
+ * Used by the incoming-call webhook, where the only thing identifying the
+ * person is the Twilio number that was dialled. */
+export function findUserByPhoneNumber(phoneNumber: string): AppUser | undefined {
+  return getUsers().find((u) => u.phoneNumber === phoneNumber);
 }

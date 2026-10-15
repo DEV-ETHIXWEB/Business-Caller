@@ -37,11 +37,17 @@ Follow it top to bottom.
 5. Twilio dials the client. The caller talks through their laptop
    mic/speakers.
 
-Everyone shares the same TwiML App and Voice Request URL, nothing in
-Twilio Console needs to be configured per person, only the phone number
-itself needs Voice enabled. Your existing setup, the Twilio number
-forwarding incoming calls to India, is a completely separate configuration
-and is never touched by this app.
+Everyone shares the same TwiML App and Voice Request URL for calls going
+out, so nothing per-person is needed there.
+
+Calls coming *in* go the other way: Twilio asks this app's server what to do
+with a call to one of the numbers, and the server rings that person's browser
+and, if one is configured, their own phone at the same time, passing along
+*the caller's own number* so both show who is really calling. That does mean
+each number's "A call comes in" webhook has to point at this app (Section 4),
+and that doing so takes over from any plain call-forwarding set directly on
+the number - the `forwardTo` setting replaces it, and fixes the forwarded
+call announcing your own Twilio number instead of the caller's.
 
 ## 1. Install and configure for local testing
 
@@ -118,7 +124,40 @@ under **Voice Configuration**, set:
 - **REQUEST URL**: `https://<your-vercel-domain>/api/voice`
 - Method: **HTTP POST**
 
-Click **Save**.
+Click **Save**. That covers calls going *out*.
+
+### Calls coming in
+
+Still in Twilio Console, go to **Phone Numbers → Manage → Active numbers**
+and open **each** number in `APP_USERS`. Under **Voice Configuration**, set
+**A call comes in** to:
+
+- **Webhook**: `https://<your-vercel-domain>/api/voice/incoming`
+- Method: **HTTP POST**
+
+Click **Save**, and repeat for every number.
+
+This is what makes the dialer ring in the browser when someone calls, and
+what makes it show the caller's real number. **It replaces any plain
+call-forwarding configured on the number itself** - if a number used to
+forward to a personal phone, put that phone in the `forwardTo` field of
+that person's `APP_USERS` entry (see below) and the forwarding carries on
+as before, except that the phone now rings showing *the caller's* number
+instead of the Twilio number.
+
+Both ring at the same time, and whoever picks up first gets the call.
+
+```jsonc
+// APP_USERS, with forwarding for one person
+[
+  { "username": "amar", "password": "...", "phoneNumber": "+12064523433",
+    "label": "Amar", "forwardTo": "+919876543210" },
+  { "username": "prateek", "password": "...", "phoneNumber": "+18722784999",
+    "label": "Prateek" }
+]
+```
+
+Leave `forwardTo` out and only the browser rings.
 
 ## 5. Test a real call
 
@@ -129,7 +168,10 @@ Click **Save**.
 3. It should ring, and the caller ID should show that user's own number
    (e.g. Amar's calls show `+1 (206) 452-3433`, Prateek's show
    `+1 (872) 278-4999`).
-4. If it doesn't work, check **Twilio Console → Monitor → Logs → Calls**
+4. Call that user's Twilio number from another phone. The browser should
+   ring with the calling number on screen (and the `forwardTo` phone, if
+   one is set, should ring at the same time showing the same number).
+5. If it doesn't work, check **Twilio Console → Monitor → Logs → Calls**
    and **Errors** for the specific reason, the most common first-time
    issues are the Request URL not matching `PUBLIC_BASE_URL` exactly, or
    the destination country being blocked under **Voice → Settings → Geo
@@ -162,6 +204,19 @@ compliance step, not something this app's code can work around.
   letters under each digit, a live "who is this" contact-match preview as
   you type, and - once connected - a native-style call screen (large
   avatar, circular Mute/Keypad buttons, one big round hang-up button).
+- **Receiving calls**: when someone calls one of the numbers, the dialer
+  rings in the browser with **the caller's own number** (and their name, if
+  the Phone Book knows it) on screen, and Answer / Decline buttons. If that
+  person has a `forwardTo` phone in `APP_USERS`, it rings at the same time
+  and shows the same caller's number - whoever picks up first gets the
+  call. This is what `/api/voice/incoming` does, and it replaces forwarding
+  configured directly on the number in Twilio Console (which could only
+  ever pass the Twilio number along as the caller ID, so a forwarded call
+  announced your own line instead of the person calling). Hold / Add call /
+  Merge are not offered on a call you answered - they upgrade a call to a
+  Conference by reaching the far party through the browser's own leg, and
+  on an answered call that relationship runs the other way round. Mute, the
+  keypad and hanging up all work as usual.
 - **Hold, Add Call, and Merge**: once connected, the call screen offers
   **Hold** (puts the other party on hold with a spoken "please wait"
   announcement, looping until resumed), **Add call** (dials a second number
@@ -427,6 +482,7 @@ app/
   lib/imageResize.ts       Shrinks a picked photo to fit the outgoing size budget
   api/token/route.ts       Mints Twilio Access Tokens for the signed-in user (server-side, gated by APP_USERS); also returns their avatarUrl
   api/voice/route.ts       TwiML webhook Twilio calls to place the outbound leg; resolves caller ID from the caller's identity
+  api/voice/incoming/route.ts  TwiML webhook for a call *to* one of the numbers: rings that person's browser (and their forwardTo phone) under the caller's own number
   api/sms/route.ts         Sends outbound SMS or MMS (voice note, photo, forwarded attachment) via the Twilio REST API, from the signed-in user's own number
   api/messages/route.ts    Reads/deletes one conversation's message history live from Twilio, scoped to the signed-in user's number
   api/messages/info/route.ts  Reads one message's delivery status, cost and segment count from Twilio

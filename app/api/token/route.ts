@@ -42,8 +42,11 @@ export async function POST(req: Request) {
 
   const voiceGrant = new VoiceGrant({
     outgoingApplicationSid: process.env.TWILIO_TWIML_APP_SID!,
-    // This browser dialer never receives calls, only places them.
-    incomingAllow: false,
+    // Lets the dialer ring in the browser when someone calls this user's
+    // number, which app/api/voice/incoming/route.ts routes to them by
+    // identity. Without this the SDK refuses to register for incoming calls
+    // and the only thing that can ever ring is the forwarding phone.
+    incomingAllow: true,
   });
   accessToken.addGrant(voiceGrant);
 

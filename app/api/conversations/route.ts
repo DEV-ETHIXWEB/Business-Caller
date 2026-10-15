@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { requireUser } from "@/lib/auth";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
-import type { ConversationSummary } from "@/lib/messageThread";
+import { isOurCopy, type ConversationSummary } from "@/lib/messageThread";
 import { getMessageMedia } from "@/lib/media";
 
 // Requires Node's crypto module (via requireUser / the twilio SDK), so
@@ -42,9 +42,15 @@ export async function POST(req: Request) {
     const byNumber = new Map<string, ConversationSummary>();
     const latestSid = new Map<string, { sid: string; hasMedia: boolean }>();
     for (const m of [...sent, ...received]) {
+      // A text to another APP_USERS colleague leaves two records on the
+      // shared account, and the colleague's copy has our own number on the
+      // side this would otherwise read as "who it was with" - which is how
+      // a conversation with yourself used to appear in the list. Only our
+      // own side of each exchange counts. See isOurCopy.
+      if (!isOurCopy(m, ourNumber)) continue;
       const isInbound = m.direction === "inbound";
       const counterpart = isInbound ? m.from : m.to;
-      if (!counterpart) continue;
+      if (!counterpart || counterpart === ourNumber) continue;
 
       const at = (m.dateCreated ?? new Date()).getTime();
       const existing = byNumber.get(counterpart);
@@ -113,7 +119,9 @@ export async function DELETE(req: Request) {
       client.messages.list({ from: withNumber, to: ourNumber, limit: FETCH_LIMIT }),
     ]);
 
-    const all = [...sent, ...received];
+    // Only our own copies - deleting a colleague's inbound copy of a text
+    // would make it vanish from their thread too (see isOurCopy).
+    const all = [...sent, ...received].filter((m) => isOurCopy(m, ourNumber));
     const results = await Promise.allSettled(all.map((m) => client.messages(m.sid).remove()));
     const deleted = results.filter((r) => r.status === "fulfilled").length;
 

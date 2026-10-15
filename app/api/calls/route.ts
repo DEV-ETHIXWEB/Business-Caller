@@ -45,6 +45,13 @@ export async function POST(req: Request) {
 
     const bySid = new Map<string, CallLogEntry>();
     for (const c of outbound) {
+      // Everyone in APP_USERS shares one Twilio account, so calling a
+      // colleague's number leaves two Call records with the same `from` and
+      // `to`: the leg that left our number, and the one that arrived at
+      // theirs. Both come back from the query above, which showed the one
+      // call twice. Only our own side of a call belongs in our history -
+      // the colleague's copy is a row in *their* history.
+      if (c.direction === "inbound") continue;
       bySid.set(c.sid, {
         sid: c.sid,
         direction: "outbound",
@@ -55,11 +62,16 @@ export async function POST(req: Request) {
       });
     }
     for (const c of inbound) {
-      // A call answered from the browser shows up in Twilio's records as
-      // two legs sharing the same parent - de-duping by sid (each leg has
-      // its own) still leaves one row per leg, which is fine: the browser
-      // leg's `from` is our own client identity, not useful to show, so
-      // only the true inbound leg (from the real caller) is kept here.
+      // The mirror of the rule above: a record that reached our number is
+      // ours only when it is the inbound leg. The outbound leg a colleague's
+      // call created on its way here is theirs.
+      //
+      // The <Dial> that rings the browser (and any forwarding phone) is an
+      // outbound leg too, but its `to` is "client:<identity>" or the
+      // forwarding number rather than our own, so it never reaches either
+      // query - an answered incoming call still logs as the single inbound
+      // row the caller actually made.
+      if (c.direction !== "inbound") continue;
       if (bySid.has(c.sid)) continue;
       bySid.set(c.sid, {
         sid: c.sid,

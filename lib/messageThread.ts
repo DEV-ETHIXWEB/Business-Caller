@@ -50,3 +50,31 @@ export interface ConversationSummary {
    * "Voice message" or "Photo" instead of showing an empty preview. */
   lastKind?: MediaKind;
 }
+
+/** The two fields of a Twilio Message resource that decide whose thread a
+ * record belongs in. Kept structural so both the SDK's Message instances
+ * and plain test objects satisfy it. */
+export interface MessageSides {
+  direction: string;
+  from: string | null;
+  to: string | null;
+}
+
+/**
+ * Whether a Twilio Message record is *our* copy of a text.
+ *
+ * Everyone in APP_USERS shares a single Twilio account, so texting a
+ * colleague's number leaves two separate Message records for the one text:
+ * the outbound copy that left our number, and the inbound copy that arrived
+ * at theirs. Both carry the identical `from` and `to`, so a `list({ from:
+ * us, to: them })` query hands back both - and the inbound one used to be
+ * rendered as a reply, which is why every text to a colleague instantly
+ * appeared again as if they had sent it straight back.
+ *
+ * A record is ours when it is our own side of the exchange: outbound only
+ * when we are the sender, inbound only when we are the recipient. The other
+ * copy is the colleague's, and belongs in their thread, not ours.
+ */
+export function isOurCopy(m: MessageSides, ourNumber: string): boolean {
+  return m.direction === "inbound" ? m.to === ourNumber : m.from === ourNumber;
+}

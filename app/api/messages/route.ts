@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { requireUser } from "@/lib/auth";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
-import type { ThreadMessage } from "@/lib/messageThread";
+import { isOurCopy, type ThreadMessage } from "@/lib/messageThread";
 import { getMessageMedia } from "@/lib/media";
 
 // Requires Node's crypto module (via requireUser / the twilio SDK), so
@@ -59,8 +59,18 @@ export async function POST(req: Request) {
       client.messages.list({ from: withNumber, to: ourNumber, limit: pageSize }),
     ]);
 
+    // Texting another APP_USERS colleague puts two records on the account for
+    // the one text - ours and theirs - and both match the query above, so
+    // without this the thread showed every such text twice, the second time
+    // as an instant "reply". isOurCopy keeps only our own side; the de-dupe
+    // by SID guards against the same record arriving from both queries.
+    const ourMessages = new Map<string, (typeof outbound)[number]>();
+    for (const m of [...outbound, ...inbound]) {
+      if (isOurCopy(m, ourNumber)) ourMessages.set(m.sid, m);
+    }
+
     const messages: ThreadMessage[] = await Promise.all(
-      [...outbound, ...inbound].map(async (m) => {
+      Array.from(ourMessages.values()).map(async (m) => {
         const message: ThreadMessage = {
           sid: m.sid,
           direction: (m.direction === "inbound" ? "inbound" : "outbound") as ThreadMessage["direction"],

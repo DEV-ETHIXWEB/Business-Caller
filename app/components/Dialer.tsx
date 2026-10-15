@@ -561,31 +561,75 @@ function useMediaQuery(query: string): boolean {
   );
 }
 
+// How long after something moves the viewport we take another look, in ms.
+// A keyboard slides in over a couple of hundred milliseconds, and phones
+// routinely slide an extra strip in or out above it afterwards (predictive
+// text, autofill, a "next / done" bar). Those later changes do not always
+// come with a resize event of their own, so the one measurement taken while
+// the keyboard was still animating would stick - leaving the chat sized to a
+// keyboard taller than the one now on screen, i.e. a dead strip between the
+// message box and the keyboard. Re-measuring on this schedule settles it
+// without depending on an event the browser may never send.
+const VIEWPORT_SETTLE_MS = [60, 160, 320, 600];
+
 function subscribeVisualViewport(notify: () => void) {
   const vv = window.visualViewport;
   if (!vv) return () => {};
-  vv.addEventListener("resize", notify);
-  vv.addEventListener("scroll", notify);
+
+  let frame = 0;
+  let timers: number[] = [];
+  const resample = () => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(notify);
+    for (const t of timers) clearTimeout(t);
+    timers = VIEWPORT_SETTLE_MS.map((ms) => window.setTimeout(notify, ms));
+  };
+
+  vv.addEventListener("resize", resample);
+  vv.addEventListener("scroll", resample);
+  window.addEventListener("resize", resample);
+  window.addEventListener("orientationchange", resample);
+  // Focusing or blurring a field is what opens and closes the keyboard, and
+  // on some phones it is the only signal that arrives before the strip above
+  // the keyboard changes height.
+  window.addEventListener("focusin", resample);
+  window.addEventListener("focusout", resample);
+
   return () => {
-    vv.removeEventListener("resize", notify);
-    vv.removeEventListener("scroll", notify);
+    cancelAnimationFrame(frame);
+    for (const t of timers) clearTimeout(t);
+    vv.removeEventListener("resize", resample);
+    vv.removeEventListener("scroll", resample);
+    window.removeEventListener("resize", resample);
+    window.removeEventListener("orientationchange", resample);
+    window.removeEventListener("focusin", resample);
+    window.removeEventListener("focusout", resample);
   };
 }
 
 function visualViewportSnapshot(): string {
   const vv = window.visualViewport;
-  return vv ? `${Math.round(vv.height)}|${Math.round(vv.offsetTop)}` : "";
+  if (!vv) return "";
+  // `position: fixed` is laid out against the *layout* viewport, which is
+  // what documentElement.clientHeight measures (html/body are height:100%,
+  // overflow:hidden). The keyboard inset is however much of that box the
+  // keyboard and its trimmings are sitting on top of - zero on a browser
+  // that honours interactive-widget=resizes-content, since there the layout
+  // viewport has already shrunk out of the keyboard's way by itself.
+  const layoutHeight = document.documentElement.clientHeight;
+  const keyboardInset = Math.max(0, Math.round(layoutHeight - vv.height - vv.offsetTop));
+  return `${Math.round(vv.offsetTop)}|${keyboardInset}`;
 }
 
 // The part of the screen that is actually visible. On a phone this shrinks
 // when the on-screen keyboard opens (and iOS may also scroll it), which is
 // what lets the chat stay pinned exactly to the visible area - header at the
 // top, message box right above the keyboard - so nothing jumps or zooms.
-function useVisualViewport(): { height: number; top: number } | null {
+function useVisualViewport(): { top: number; keyboardInset: number } | null {
   const key = useSyncExternalStore(subscribeVisualViewport, visualViewportSnapshot, () => "");
   if (!key) return null;
-  const [height, top] = key.split("|").map(Number);
-  return { height, top };
+  const [top, keyboardInset] = key.split("|").map(Number);
+  return { top, keyboardInset };
 }
 
 export default function Dialer() {
@@ -661,6 +705,19 @@ export default function Dialer() {
   const [callStatus, setCallStatus] = useState<CallStatus>("ready");
   const [callError, setCallError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // The number of whoever is ringing us right now, or null when nothing is.
+  // app/api/voice/incoming/route.ts dials the browser with the original
+  // caller's number as the caller ID, so this really is the person calling
+  // rather than our own line.
+  const [incomingFrom, setIncomingFrom] = useState<string | null>(null);
+  // Whether the call in progress is one we answered rather than placed.
+  // Hold / Add Call / Merge work by moving the call into a Conference, and
+  // lib/conference.ts reaches the far party as a *child* of the browser's
+  // leg - which is how an outgoing call is arranged, but exactly backwards
+  // for an answered one, where the browser leg is itself the child of the
+  // caller's. Rather than offer buttons that cannot work, those controls sit
+  // out an incoming call; mute, the keypad and hanging up are unaffected.
+  const [callIsIncoming, setCallIsIncoming] = useState(false);
   const [muted, setMuted] = useState(false);
   const [keypadOpen, setKeypadOpen] = useState(false);
 
@@ -752,7 +809,9 @@ export default function Dialer() {
   // Wide screens get the two-pane, WhatsApp Web layout on the Texts tab.
   const wideLayout = useMediaQuery("(min-width: 1280px)");
   const vv = useVisualViewport();
-  const viewportHeight = vv?.height ?? 0;
+  // Changes exactly when the on-screen keyboard opens, closes, or changes
+  // height - which is when the conversation has to re-pin to the bottom.
+  const keyboardInset = vv?.keyboardInset ?? 0;
 
   // Keep the conversation pinned to the latest message as new ones arrive
   // from polling or are sent - and when the keyboard opens/closes, which
@@ -762,7 +821,7 @@ export default function Dialer() {
   useEffect(() => {
     const el = threadScrollRef.current;
     if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
-  }, [messageLog, pendingMessages, viewportHeight, activeThread, isDesktop]);
+  }, [messageLog, pendingMessages, keyboardInset, activeThread, isDesktop]);
 
   // Each chat has its own message box: opening one loads its unsent draft (or
   // an empty box), so text typed in one chat never lands in another.
@@ -1090,6 +1149,11 @@ export default function Dialer() {
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
+  // The call that is ringing but has not been picked up yet. Kept apart from
+  // callRef so answering is just a hand-off from one to the other, and so a
+  // second call arriving mid-call can be turned away without disturbing the
+  // one in progress.
+  const incomingRef = useRef<Call | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const threadScrollRef = useRef<HTMLDivElement | null>(null);
   const threadContentRef = useRef<HTMLDivElement | null>(null);
@@ -1180,6 +1244,7 @@ export default function Dialer() {
     setCallActionError(null);
     setAddCallOpen(false);
     setAddCallNumber("");
+    setCallIsIncoming(false);
     callRef.current = null;
   }, [stopTimer]);
 
@@ -1253,9 +1318,46 @@ export default function Dialer() {
 
       device.audio?.on("deviceChange", () => refreshDevices(device));
 
+      // Someone is calling this user's Twilio number and the incoming
+      // webhook routed it here. Nothing is answered automatically - this
+      // only raises the "who is calling" screen.
+      device.on("incoming", (call: Call) => {
+        if (incomingRef.current || callRef.current) {
+          // Already on a call, or already being rung by someone else. Busy
+          // is a far better answer than quietly dropping it.
+          call.reject();
+          return;
+        }
+        incomingRef.current = call;
+        setIncomingFrom(normalizePhoneNumber(call.parameters.From ?? "") || call.parameters.From || "Unknown number");
+
+        // The caller gave up, or the call was picked up somewhere else (the
+        // forwarding phone rings in parallel). Only clears the ringing
+        // screen - once answered, incomingRef no longer points at this call
+        // and attachCallHandlers owns it instead.
+        const dismiss = () => {
+          if (incomingRef.current !== call) return;
+          incomingRef.current = null;
+          setIncomingFrom(null);
+        };
+        call.on("cancel", dismiss);
+        call.on("disconnect", dismiss);
+        call.on("reject", dismiss);
+        call.on("error", dismiss);
+      });
+
       deviceRef.current = device;
       setDeviceReady(true);
       refreshDevices(device);
+
+      // Until the device is registered Twilio has nowhere to send a call to
+      // this browser. A failure here is not fatal - outgoing calls work
+      // regardless - so it is reported and otherwise left alone.
+      try {
+        await device.register();
+      } catch (err) {
+        console.warn("[dialer] Could not register for incoming calls:", err);
+      }
     },
     [refreshDevices],
   );
@@ -2012,6 +2114,12 @@ export default function Dialer() {
 
   function handleSignOut() {
     playTap();
+    // Destroying the device unregisters it, so nothing can ring this browser
+    // once the person has signed out - but a call already on screen has to
+    // be let go of here too.
+    incomingRef.current?.reject();
+    incomingRef.current = null;
+    setIncomingFrom(null);
     deviceRef.current?.destroy();
     deviceRef.current = null;
     clearSession();
@@ -2084,6 +2192,7 @@ export default function Dialer() {
     }
 
     try {
+      setCallIsIncoming(false);
       setCallStatus("connecting");
       const call = await deviceRef.current.connect({ params: { To: normalized } });
       callRef.current = call;
@@ -2104,6 +2213,54 @@ export default function Dialer() {
     setCallStatus("wrapping-up");
     callRef.current?.disconnect();
     deviceRef.current?.disconnectAll();
+  }
+
+  // Picking up a call that is ringing. The caller's number becomes the
+  // number this screen is "on", so the active-call screen names them rather
+  // than the line they reached.
+  async function handleAcceptIncoming() {
+    const call = incomingRef.current;
+    if (!call) return;
+    playTap();
+
+    // Twilio needs the microphone before it can put us on the call - without
+    // this the call connects and the caller hears nothing. The ask is tied
+    // to this tap, exactly as it is when placing a call.
+    if (micPermission !== "granted") {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+        setMicPermission("granted");
+        if (deviceRef.current) refreshDevices(deviceRef.current);
+      } catch {
+        setMicPermission("denied");
+        return;
+      }
+      // Answering had to wait for the microphone prompt, and the caller may
+      // have hung up in the meantime.
+      if (incomingRef.current !== call) return;
+    }
+
+    const from = incomingFrom ?? "";
+    incomingRef.current = null;
+    setIncomingFrom(null);
+    setCallError(null);
+    setPhoneError(null);
+    setPhoneNumber(from);
+    setDialOverlayOpen(true);
+    setCallIsIncoming(true);
+    setCallStatus("connecting");
+    callRef.current = call;
+    attachCallHandlers(call);
+    call.accept();
+  }
+
+  function handleDeclineIncoming() {
+    playTap();
+    const call = incomingRef.current;
+    incomingRef.current = null;
+    setIncomingFrom(null);
+    call?.reject();
   }
 
   function handleToggleMute() {
@@ -2891,14 +3048,22 @@ export default function Dialer() {
   // visible viewport (so the keyboard never covers or shoves it, and nothing
   // zooms); on desktop the same view sits inside the Texts panel. Rendered
   // in exactly one place depending on screen size, never both.
+  //
+  // The phone layer always covers the whole screen (inset-0) and keeps clear
+  // of the keyboard with padding, rather than being given the visible area's
+  // exact height. Both put the message box in the same place, but a height
+  // that is even briefly out of date leaves a strip of the screen uncovered -
+  // the conversation list showing through between the message box and the
+  // keyboard - while padding on a full-screen layer can only ever expose the
+  // chat's own background.
   const chatView = activeThread ? (
     <div
       className={
         isDesktop
           ? "flex h-full min-h-0 flex-1 flex-col"
-          : "fixed inset-x-0 z-40 flex flex-col overflow-hidden bg-gradient-to-br from-[#F7F2F1] via-white to-[#F5EFEE] animate-[chat-in_0.22s_ease-out] dark:from-[#0c0d10] dark:via-[#120a0b] dark:to-black"
+          : "fixed inset-0 z-40 flex flex-col overflow-hidden bg-gradient-to-br from-[#F7F2F1] via-white to-[#F5EFEE] animate-[chat-in_0.22s_ease-out] dark:from-[#0c0d10] dark:via-[#120a0b] dark:to-black"
       }
-      style={isDesktop ? undefined : { top: vv?.top ?? 0, height: vv?.height ?? "100vh" }}
+      style={isDesktop ? undefined : { paddingTop: vv?.top ?? 0, paddingBottom: keyboardInset }}
       onDragOver={(e) => {
         if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) {
           e.preventDefault();
@@ -3244,7 +3409,15 @@ export default function Dialer() {
         </p>
       )}
 
-      <div className="shrink-0 border-t border-slate-900/5 px-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 dark:border-white/5 lg:border-0 lg:px-0 lg:pb-0">
+      {/* The safe-area padding keeps the message box clear of the home
+          indicator / gesture bar - but while the keyboard is up that bar is
+          drawn over the keyboard, not over the page, so holding the space
+          open there is just a gap under the message box. */}
+      <div
+        className={`shrink-0 border-t border-slate-900/5 px-2 md:max-lg:px-[max(0.5rem,calc((100%-44rem)/2))] pt-2 dark:border-white/5 lg:border-0 lg:px-0 lg:pb-0 ${
+          keyboardInset > 0 ? "pb-2" : "pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+        }`}
+      >
         {chatPrefs.isBlocked(activeThread) ? (
           <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-900/[0.06] px-4 py-3 dark:bg-white/[0.08]" role="status">
             <p className="text-sm text-slate-600 dark:text-slate-300">You blocked this number, so you cannot send messages to it.</p>
@@ -3674,7 +3847,11 @@ export default function Dialer() {
   }
 
   const showCallOverlay = dialOverlayOpen || callStatus !== "ready";
-  const overlayName = phoneNumber ? contacts.find((c) => c.number === phoneNumber)?.name : undefined;
+  // The Phone Book stores numbers in E.164, while what is typed into the
+  // keypad is whatever the person typed, so the lookup has to normalise
+  // first or a saved contact's name never appears on the call screen.
+  const overlayName = phoneNumber ? contacts.find((c) => c.number === normalizePhoneNumber(phoneNumber))?.name : undefined;
+  const incomingName = incomingFrom ? contacts.find((c) => c.number === incomingFrom)?.name : undefined;
 
   // The dial pad / active-call screen. Rendered twice: docked permanently
   // on the right on desktop (there's plenty of spare width there, so it's
@@ -3705,12 +3882,19 @@ export default function Dialer() {
             </button>
           </div>
         )}
-        <p
-          className={`${closable && ready ? "mt-1.5" : ""} inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/50 px-2.5 py-1 text-xs font-medium text-slate-500 backdrop-blur-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-400`}
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-[#C0272D]" />
-          Calling from {callerId || "…"}
-        </p>
+        {/* Which of our own numbers the call goes out on. Worth saying while
+            picking who to call, but once a call is up the screen belongs to
+            the person on the other end - leaving this here is what made an
+            outgoing call read as though it were about us rather than about
+            them. The line is still named, quietly, under their number. */}
+        {ready && (
+          <p
+            className={`${closable ? "mt-1.5" : ""} inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/50 px-2.5 py-1 text-xs font-medium text-slate-500 backdrop-blur-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-400`}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-[#C0272D]" />
+            Calling from {callerId || "…"}
+          </p>
+        )}
 
         {/* Mic/speaker pickers - shown at all times, including mid-call, so
             switching from the earpiece/speaker to a Bluetooth headset (or
@@ -3808,10 +3992,16 @@ export default function Dialer() {
           <>
             <div className="mt-5 flex flex-col items-center text-center">
               <Avatar label={overlayName ?? phoneNumber} size="xl" />
-              <h2 className="mt-3 text-lg font-semibold tracking-wide text-slate-900 dark:text-white">
+              <h2 className="mt-3 text-xl font-semibold tracking-wide text-slate-900 dark:text-white">
                 {overlayName ?? phoneNumber}
               </h2>
-              <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
+              {/* The number is always on screen, even for a saved contact,
+                  so there is never any doubt about who is being called. */}
+              {overlayName && (
+                <p className="mt-0.5 text-sm tabular-nums text-slate-500 dark:text-slate-400">{phoneNumber}</p>
+              )}
+              <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">on {callerId || "your line"}</p>
+              <p className="mt-1.5 flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
                     callStatus === "in-call"
@@ -3857,7 +4047,7 @@ export default function Dialer() {
                     most one other party - once a call has been added, hold
                     is per-participant (see the list below) since "hold" is
                     otherwise ambiguous about who to hold. */}
-                {conferenceParticipants.length <= 1 && (
+                {!callIsIncoming && conferenceParticipants.length <= 1 && (
                   <div className="flex flex-col items-center gap-1.5">
                     <button
                       type="button"
@@ -3876,21 +4066,23 @@ export default function Dialer() {
                   </div>
                 )}
 
-                <div className="flex flex-col items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      playTap();
-                      setCallActionError(null);
-                      setAddCallOpen((v) => !v);
-                    }}
-                    className={addCallOpen ? CALL_ACTION_CIRCLE_ACTIVE_CLASS : CALL_ACTION_CIRCLE_CLASS}
-                    aria-label="Add call"
-                  >
-                    <PersonPlusIcon className="h-5 w-5" />
-                  </button>
-                  <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Add call</span>
-                </div>
+                {!callIsIncoming && (
+                  <div className="flex flex-col items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playTap();
+                        setCallActionError(null);
+                        setAddCallOpen((v) => !v);
+                      }}
+                      className={addCallOpen ? CALL_ACTION_CIRCLE_ACTIVE_CLASS : CALL_ACTION_CIRCLE_CLASS}
+                      aria-label="Add call"
+                    >
+                      <PersonPlusIcon className="h-5 w-5" />
+                    </button>
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Add call</span>
+                  </div>
+                )}
 
                 {conferenceParticipants.some((p) => p.onHold) && (
                   <div className="flex flex-col items-center gap-1.5">
@@ -4193,6 +4385,64 @@ export default function Dialer() {
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-[fade-in_0.2s_ease-out] lg:hidden">
           <div className={`${CARD_CLASS} max-h-[calc(100dvh-2rem)] overflow-y-auto animate-[pop-in_0.25s_cubic-bezier(0.16,1,0.3,1)]`}>
             {callPanelBody(true)}
+          </div>
+        </div>
+      )}
+
+      {/* Someone is calling. Sits above everything else, on phones and on
+          desktop alike, and leads with who is calling - their name when the
+          Phone Book knows the number, and the number itself either way. */}
+      {incomingFrom !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-[fade-in_0.2s_ease-out]">
+          <div
+            className={`${CARD_CLASS} animate-[pop-in_0.25s_cubic-bezier(0.16,1,0.3,1)]`}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Incoming call from ${incomingName ?? incomingFrom}`}
+          >
+            <p className="flex items-center justify-center gap-1.5 text-xs font-semibold uppercase tracking-[0.15em] text-slate-500 dark:text-slate-400">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_8px_2px_rgba(16,185,129,0.6)]" />
+              Incoming call
+            </p>
+
+            <div className="mt-5 flex flex-col items-center text-center">
+              <Avatar label={incomingName ?? incomingFrom} size="xl" />
+              <h2 className="mt-3 text-xl font-semibold tracking-wide text-slate-900 dark:text-white">
+                {incomingName ?? incomingFrom}
+              </h2>
+              {/* Always spelled out, even when the name is known - the number
+                  is the thing that says who is really on the line. */}
+              {incomingName && (
+                <p className="mt-0.5 text-sm tabular-nums text-slate-500 dark:text-slate-400">{incomingFrom}</p>
+              )}
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">on {callerId || "your line"}</p>
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 items-center gap-6">
+              <div className="flex flex-col items-center gap-2">
+                <button type="button" onClick={handleDeclineIncoming} className={HANGUP_CIRCLE_CLASS} aria-label="Decline call">
+                  <PhoneIcon className="h-6 w-6 rotate-[135deg]" />
+                </button>
+                <span className="text-[0.6875rem] font-medium text-slate-500 dark:text-slate-400">Decline</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleAcceptIncoming()}
+                  className={CALL_BUTTON_CIRCLE_CLASS}
+                  aria-label="Answer call"
+                >
+                  <PhoneIcon className="h-6 w-6" />
+                </button>
+                <span className="text-[0.6875rem] font-medium text-slate-500 dark:text-slate-400">Answer</span>
+              </div>
+            </div>
+
+            {micPermission === "denied" && (
+              <p className={`mt-5 ${ERROR_BANNER_CLASS}`}>
+                Microphone access is blocked, so this call cannot be answered here. Allow it for this site and try again.
+              </p>
+            )}
           </div>
         </div>
       )}
