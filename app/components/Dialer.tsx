@@ -18,6 +18,7 @@ import { Avatar, PRESET_COUNT } from "./Avatar";
 import { ArrowDownRightIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpRightIcon, BackspaceIcon, CalendarIcon, CameraIcon, CheckSquareIcon, ShareIcon, TimerIcon, ChevronDownIcon, CloseIcon, CopyIcon, DotsIcon, FingerprintIcon, InfoIcon, PencilIcon, PinIcon, ReplyIcon, StarIcon, ForwardIcon, GearIcon, KeypadIcon, LockIcon, MergeIcon, MessageIcon, MicIcon, MicOffIcon, PauseIcon, PeopleIcon, PersonPlusIcon, PhoneIcon, PlusIcon, SearchIcon, SpeakerIcon, TrashIcon } from "./icons";
 import { SettingsPanel, type ProfileStatusValue } from "./SettingsPanel";
 import { applySettings, useSettings } from "@/lib/settings";
+import { currentPushState, deviceLabel, disablePush, enablePush, PushError, type PushState } from "@/lib/notifications";
 import { FOREVER, useChatPrefs } from "@/lib/chatPrefs";
 import { useSendQueue, type QueuedSend, type SendAttemptResult } from "@/lib/sendQueue";
 import { Composer } from "./chat/Composer";
@@ -398,6 +399,7 @@ async function requestToken(credentials: TokenRequest): Promise<{
   token: string;
   sessionToken: string;
   sessionTtlMs?: number;
+  vapidPublicKey?: string;
   phoneNumber: string;
   label: string;
   avatarUrl?: string;
@@ -414,6 +416,7 @@ async function requestToken(credentials: TokenRequest): Promise<{
     token?: string;
     sessionToken?: string;
     sessionTtlMs?: number;
+    vapidPublicKey?: string | null;
     phoneNumber?: string;
     label?: string;
     avatarUrl?: string;
@@ -430,6 +433,7 @@ async function requestToken(credentials: TokenRequest): Promise<{
     token: data.token,
     sessionToken: data.sessionToken,
     sessionTtlMs: data.sessionTtlMs,
+    vapidPublicKey: data.vapidPublicKey ?? undefined,
     phoneNumber: data.phoneNumber,
     label: data.label ?? "",
     avatarUrl: data.avatarUrl,
@@ -666,6 +670,41 @@ function useVisualViewport(): { top: number; keyboardInset: number } | null {
 // Shown under a list that Twilio had more rows for than a single fetch
 // covers, so "the oldest ones are missing" is stated rather than left for
 // someone to notice.
+// The plain-words delivery line under the newest message you sent, the way
+// iMessage shows one. The ticks on every bubble are easy to miss and hard
+// to read ("is two ticks delivered, or just sent?"); this says it outright
+// for the message you actually care about - the last one.
+//
+// There is no "Read" here, and there cannot be: SMS carries no read
+// receipts. Delivery receipts come back from the carrier, read receipts
+// simply do not exist on SMS - that is a property of the network, not a
+// missing feature. (WhatsApp and RCS have them; plain texts never will.)
+function deliveryLine(status: string): { text: string; tone: string } | null {
+  switch (status) {
+    case "delivered":
+      return { text: "Delivered", tone: "text-slate-400 dark:text-slate-500" };
+    case "sent":
+      // Handed to the carrier, which has not said whether it arrived.
+      // Common for some networks and most landlines.
+      return { text: "Sent", tone: "text-slate-400 dark:text-slate-500" };
+    case "undelivered":
+    case "failed":
+    case "retrying":
+      // Deliberately nothing here. A failure already shows inside the
+      // bubble, in amber and tappable for the carrier's actual reason
+      // (MessageTicks) - repeating it underneath would just say the same
+      // thing twice. This line exists to disambiguate success, which the
+      // ticks alone were bad at.
+      return null;
+    case "queued":
+    case "accepted":
+    case "sending":
+      return { text: "Sending…", tone: "text-slate-400 dark:text-slate-500" };
+    default:
+      return null;
+  }
+}
+
 function TruncationNotice({ what }: { what: string }) {
   return (
     <p className="px-2 py-3 text-center text-[0.6875rem] text-slate-400 dark:text-slate-500" role="status">
@@ -688,6 +727,12 @@ export default function Dialer() {
   // Populated from /api/token once signed in - this dialer's own number,
   // shown as the caller ID and used to label the account.
   const [callerId, setCallerId] = useState("");
+  // Notifications that arrive with the app closed - the only thing that can
+  // say who is calling before the call is answered.
+  const [pushState, setPushState] = useState<PushState>("off");
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const vapidKeyRef = useRef<string>("");
   const [signedInUsername, setSignedInUsername] = useState("");
   const [signedInLabel, setSignedInLabel] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
@@ -1432,8 +1477,9 @@ export default function Dialer() {
       }
 
       try {
-        const { token, sessionToken, sessionTtlMs, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus } =
+        const { token, sessionToken, sessionTtlMs, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus, vapidPublicKey } =
           await requestToken({ token: stored.sessionToken });
+      vapidKeyRef.current = vapidPublicKey ?? "";
         if (cancelled) return;
         saveSession(stored.username, sessionToken, sessionTtlMs);
         setCallerId(phoneNumber);
@@ -1900,8 +1946,9 @@ export default function Dialer() {
 
       // The device proved who this is; the server answered with a session
       // token, so no password is involved on this path at all.
-      const { token, sessionToken, sessionTtlMs, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus } =
+      const { token, sessionToken, sessionTtlMs, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus, vapidPublicKey } =
         await requestToken({ token: verifyData.sessionToken });
+      vapidKeyRef.current = vapidPublicKey ?? "";
       saveSession(verifyData.username, sessionToken, sessionTtlMs ?? verifyData.sessionTtlMs);
       setCallerId(phoneNumber);
       setSignedInUsername(verifyData.username);
@@ -2115,8 +2162,9 @@ export default function Dialer() {
     setUnlocking(true);
     try {
       const username = usernameInput.trim();
-      const { token, sessionToken, sessionTtlMs, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus } =
+      const { token, sessionToken, sessionTtlMs, phoneNumber, label, avatarUrl: fetchedAvatarUrl, about: fetchedAbout, status: fetchedStatus, vapidPublicKey } =
         await requestToken({ username, password: passwordInput });
+      vapidKeyRef.current = vapidPublicKey ?? "";
       saveSession(username, sessionToken, sessionTtlMs);
       // The password was needed for exactly this one request.
       setPasswordInput("");
@@ -2167,6 +2215,99 @@ export default function Dialer() {
       setAbout(previousAbout);
       setStatus(previousStatus);
       setProfileSaveError(err instanceof Error ? err.message : "Could not save your profile.");
+    }
+  }
+
+  // Reflect whatever this browser's real subscription state is, rather than
+  // whatever was last clicked - permission can be changed in browser
+  // settings, and site data can be cleared, both behind the app's back.
+  useEffect(() => {
+    if (!unlocked) return;
+    let cancelled = false;
+    void currentPushState().then((state) => {
+      if (!cancelled) setPushState(state);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [unlocked]);
+
+  // Tapping a notification should land on the person it was about, not on
+  // whatever tab happened to be open. The service worker posts the number
+  // across when it focuses an existing window.
+  useEffect(() => {
+    if (!unlocked || typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; number?: string; kind?: string } | null;
+      if (!data || data.type !== "notification-click" || !data.number) return;
+      if (data.kind === "message") {
+        setMessageTo(data.number);
+        setActiveThread(data.number);
+        setActiveTab("texts");
+      } else {
+        setActiveTab("calls");
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [unlocked]);
+
+  // Opened from a notification in a tab that wasn't running yet: the
+  // service worker put the number in the URL instead.
+  useEffect(() => {
+    if (!unlocked) return;
+    const from = new URLSearchParams(window.location.search).get("from");
+    if (!from) return;
+    // Applied on the next tick rather than during the effect itself, the
+    // same way the draft loader below does it - opening a chat touches
+    // three pieces of state, and doing that synchronously inside an effect
+    // makes React re-render in a cascade.
+    const timer = setTimeout(() => {
+      setMessageTo(from);
+      setActiveThread(from);
+      setActiveTab("texts");
+    }, 0);
+    // Taken out of the URL so a refresh doesn't reopen the same chat.
+    window.history.replaceState(null, "", window.location.pathname);
+    return () => clearTimeout(timer);
+  }, [unlocked]);
+
+  async function handleTogglePush(on: boolean) {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      const saved = loadSession();
+      if (!saved) throw new PushError("Please sign in again first.");
+      if (on) {
+        const next = await enablePush(vapidKeyRef.current, async (subscription, label) => {
+          const res = await fetch("/api/push/subscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...saved, subscription, label }),
+          });
+          if (!res.ok) {
+            const data = (await res.json().catch(() => ({}))) as { error?: string };
+            throw new PushError(data.error || "Could not turn notifications on.");
+          }
+        });
+        setPushState(next);
+        setToast(`Alerts on for ${deviceLabel()}`);
+      } else {
+        setPushState(
+          await disablePush(async (endpoint) => {
+            await fetch("/api/push/subscribe", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...saved, endpoint }),
+            }).catch(() => undefined);
+          }),
+        );
+      }
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : "Could not change notifications.");
+      setPushState(await currentPushState());
+    } finally {
+      setPushBusy(false);
     }
   }
 
@@ -2762,6 +2903,9 @@ export default function Dialer() {
   const disappearAfter = activeThread ? (chatPrefs.prefs.disappearing[activeThread] ?? 0) : 0;
   const disappearCutoff = disappearAfter ? Date.now() - disappearAfter * 1000 : 0;
   const chatMessages = [...messageLog, ...visiblePending].filter((m) => !chatPrefs.isHidden(m.sid) && (!disappearCutoff || m.at >= disappearCutoff));
+  // The newest message you sent in this thread - the only one that shows a
+  // spelled-out delivery status underneath it.
+  const lastOutboundSid = [...chatMessages].reverse().find((m) => m.direction === "outbound")?.sid;
   // Disappearing messages: texts older than the chat's timer are removed from
   // Twilio's records (a few at a time) the next time the chat's messages load.
   // A sid is only kept out of future attempts once its delete actually
@@ -3407,6 +3551,10 @@ export default function Dialer() {
           const out = m.direction === "outbound";
           const grouped = !showDay && !!prev && prev.direction === m.direction;
           const isPending = m.sid.startsWith("pending-");
+          // Only the newest message you sent gets the spelled-out status,
+          // so the thread doesn't turn into a column of "Delivered".
+          const isLastOutbound = out && lastOutboundSid === m.sid;
+          const delivery = isLastOutbound ? deliveryLine(m.status) : null;
           return (
             <div key={m.sid} id={`msg-${m.sid}`} className={flashSid === m.sid ? "flash-message rounded-2xl" : undefined}>
               {showDay && (
@@ -3442,6 +3590,16 @@ export default function Dialer() {
                     onSaveContact={saveContactFromCard}
                     onOpenInfo={() => setInfoMessage(m)}
                   />
+                  {delivery && (
+                    <button
+                      type="button"
+                      onClick={() => setInfoMessage(m)}
+                      className={`mt-0.5 px-1 text-[0.6875rem] leading-none ${delivery.tone}`}
+                      aria-label={`${delivery.text}. Tap for delivery details.`}
+                    >
+                      {delivery.text}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -4812,6 +4970,10 @@ export default function Dialer() {
             setLockConfig(next);
             setToast("Secret code removed");
           }}
+          pushState={pushState}
+          pushBusy={pushBusy}
+          pushError={pushError}
+          onTogglePush={(on) => void handleTogglePush(on)}
           onRequestNotifications={async () => {
             if (typeof Notification === "undefined") {
               setToast("This browser does not support notifications");

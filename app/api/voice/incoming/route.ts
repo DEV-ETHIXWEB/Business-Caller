@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import twilio from "twilio";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
 import { getClientIp, rateLimit } from "@/lib/rateLimit";
 import { findUserByPhoneNumber } from "@/lib/users";
+import { lookupContactName } from "@/lib/callerName";
+import { sendPush } from "@/lib/push";
 
 // Requires Node's crypto module (via the twilio SDK's request validation),
 // so this must run on the Node.js runtime, not Edge.
@@ -88,6 +90,29 @@ export async function POST(req: Request) {
   }
 
   const caller = normalizePhoneNumber(params.From ?? "");
+
+  // Tell this person's devices who is calling, while the phone is still
+  // ringing. `after` runs it once the TwiML has already gone back to
+  // Twilio, so looking up a contact name never delays the call itself.
+  //
+  // This is the part that answers "who is this?" before the call is
+  // picked up. The forwarded leg reaching their own phone can only ever
+  // show one number, and a browser tab that is closed shows nothing at
+  // all - the notification is what works in both cases.
+  after(async () => {
+    try {
+      const name = isValidE164(caller) ? await lookupContactName(user.username, caller) : undefined;
+      const who = name ?? (isValidE164(caller) ? caller : "Unknown number");
+      await sendPush(user.username, {
+        kind: "call",
+        title: `${who} is calling`,
+        body: name ? `${caller} · on ${user.phoneNumber}` : `on your line ${user.phoneNumber}`,
+        number: isValidE164(caller) ? caller : "",
+      });
+    } catch (err) {
+      console.warn("[api/voice/incoming] Could not send the call notification:", err);
+    }
+  });
 
   const vr = new twilio.twiml.VoiceResponse();
   const dial = vr.dial({

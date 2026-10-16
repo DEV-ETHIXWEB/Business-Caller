@@ -147,6 +147,18 @@ instead of the Twilio number.
 
 Both ring at the same time, and whoever picks up first gets the call.
 
+### Texts coming in
+
+On the same screen for each number, set **A message comes in** to:
+
+- **Webhook**: `https://<your-vercel-domain>/api/sms/incoming`
+- Method: **HTTP POST**
+
+This is only what makes the notification fire - the app reads message
+history straight from Twilio either way. It replies with empty TwiML, which
+also switches off Twilio's default canned auto-reply to anyone who texts
+the number.
+
 ```jsonc
 // APP_USERS, with forwarding for one person
 [
@@ -492,6 +504,63 @@ such change.
 signing keys are derived from it as a fallback - set `SESSION_SECRET` and
 the two become independent.
 
+## Notifications: knowing who is calling
+
+The problem this solves: a call to the Twilio number is forwarded on to a
+personal phone, and a forwarded call can only carry one caller ID. Whoever
+picks up sees the *Twilio* number - so if that number is saved in their
+contacts as "Amar Twilio No", every incoming call from every client announces
+itself as that. There is no way to answer "who is this?" before picking up.
+
+Two things fix it, and they are independent:
+
+**1. Pass the real caller through.** `/api/voice/incoming` dials out as the
+original caller's number rather than the Twilio number, so the forwarded
+call shows who is actually ringing. This needs nothing but the webhook
+pointed at it (Section 4).
+
+**2. Notify the dialer.** A web push notification goes to every device the
+person has turned alerts on for, naming the caller - their Phone Book name
+when there is one, and the number either way. Same for an incoming text,
+with a preview. Tapping it opens that conversation.
+
+Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`, then each
+person turns it on once per device under **Settings → Notifications →
+Alerts when the app is closed**. Generate the keys with:
+
+```bash
+node -e "const k=require('web-push').generateVAPIDKeys();console.log(k.publicKey);console.log(k.privateKey)"
+```
+
+Subscriptions are stored per person in Twilio Sync, and a device that goes
+away (browser uninstalled, site data cleared, permission revoked) is
+dropped automatically the first time the push service reports it gone.
+
+**On iPhone and iPad, the app must be added to the Home Screen first.**
+Apple does not deliver web push to a page in a Safari tab, at all - Share →
+Add to Home Screen, open it from there, then turn the setting on. The
+Settings screen says so when it detects this.
+
+**What this is not:** a native full-screen ringtone. Skype and WhatsApp ring
+like a phone call because they are native apps using CallKit, which a web
+app cannot reach. What arrives here is a notification - it buzzes, makes a
+sound, and shows the number - which answers the question, but will not take
+over the screen.
+
+## Message delivery
+
+The newest message you sent carries a plain-words status underneath it -
+**Delivered**, **Sent**, or **Sending…** - rather than only the ticks,
+which are easy to misread. Failures keep their existing amber "Not
+delivered" inside the bubble, tappable for the carrier's actual reason.
+
+**There is no "Read" and there cannot be.** SMS carries no read receipts.
+Delivery receipts come back from the carrier, which is where *Delivered*
+comes from; whether the person opened the message is simply not something
+the SMS network reports. (WhatsApp and RCS do have read receipts; plain
+texts never will.) *Sent* means the carrier accepted it but has not
+confirmed delivery - normal on some networks and for landlines.
+
 ## Tests
 
 ```bash
@@ -516,6 +585,8 @@ is no test database and nothing touches Twilio.
 | `APP_USERS` | A JSON array, one entry per person: `[{"username":"amar","passwordHash":"scrypt:...:...","phoneNumber":"+12064523433","label":"Amar","forwardTo":"+91..."}, ...]`. Generate each hash with `npm run hash-password -- 'the password'`. Each `phoneNumber` must be a Voice-enabled Twilio number on your account; `forwardTo` is optional (see "Calls coming in") | **Yes** |
 | `SESSION_SECRET` | 32 random bytes you generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Signs session tokens and attachment links. Optional - falls back to deriving from `TWILIO_API_KEY_SECRET` - but setting it means rotating Twilio keys doesn't sign everyone out | **Yes** |
 | `PUBLIC_BASE_URL` | Your deployed Vercel URL, no trailing slash | No |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Generate once: `node -e "const k=require('web-push').generateVAPIDKeys();console.log(k.publicKey);console.log(k.privateKey)"`. Without them the notification setting says it isn't configured and nothing else changes | **The private one, yes** |
+| `VAPID_SUBJECT` | A `mailto:` address or your site URL - identifies this app to the push services. Defaults to `PUBLIC_BASE_URL` | No |
 | `BLOB_READ_WRITE_TOKEN` | Vercel dashboard → Project → Storage → create a Blob store and attach it (Vercel adds this automatically) | **Yes**, but only for profile photo upload/removal |
 
 **Never** commit `.env.local` (it already can't be, see `.gitignore`), put
@@ -549,7 +620,13 @@ app/
   lib/secrets.ts           Derives a separate signing key per purpose (session tokens, attachment links) via HKDF
   proxy.ts                 Per-request Content-Security-Policy with a fresh nonce
   api/voice/route.ts       TwiML webhook Twilio calls to place the outbound leg; resolves caller ID from the caller's identity
-  api/voice/incoming/route.ts  TwiML webhook for a call *to* one of the numbers: rings that person's browser (and their forwardTo phone) under the caller's own number
+  api/voice/incoming/route.ts  TwiML webhook for a call *to* one of the numbers: rings that person's browser (and their forwardTo phone) under the caller's own number, and pushes "X is calling"
+  api/sms/incoming/route.ts    Webhook for a text arriving on one of the numbers: pushes the sender and a preview, and replies with nothing
+  api/push/subscribe/route.ts  Registers/removes this browser for notifications
+  lib/push.ts              Sends a notification to every device a person has turned alerts on for
+  lib/pushStore.ts         Those devices' push subscriptions, per person, in Twilio Sync
+  lib/notifications.ts     Browser side: service worker, permission, subscribe (and the iOS Home Screen rule)
+  public/sw.js             Service worker - shows the notification and opens the right chat when tapped
   api/sms/route.ts         Sends outbound SMS or MMS (voice note, photo, forwarded attachment) via the Twilio REST API, from the signed-in user's own number
   api/messages/route.ts    Reads/deletes one conversation's message history live from Twilio, scoped to the signed-in user's number
   api/messages/info/route.ts  Reads one message's delivery status, cost and segment count from Twilio

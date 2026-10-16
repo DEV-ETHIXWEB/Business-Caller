@@ -4,6 +4,7 @@ import { Avatar } from "./Avatar";
 import { ChevronRightIcon, CloseIcon } from "./icons";
 import type { Settings, ThemeSetting, TextSizeSetting, WallpaperSetting, BubbleTheme, MessageSound } from "@/lib/settings";
 import type { LockConfig } from "@/lib/lock";
+import type { PushState } from "@/lib/notifications";
 
 export interface ProfileStatusValue {
   emoji: string;
@@ -58,11 +59,14 @@ export function Toggle({
   hint,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string;
   hint?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  /** Used while a change is in flight, or when the browser has blocked it. */
+  disabled?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 py-2">
@@ -76,7 +80,8 @@ export function Toggle({
         aria-checked={checked}
         aria-label={label}
         onClick={() => onChange(!checked)}
-        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+        disabled={disabled}
+        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
           checked ? "bg-gradient-to-b from-[#e0555c] to-[#C0272D]" : "bg-slate-300 dark:bg-white/15"
         }`}
       >
@@ -123,6 +128,10 @@ export function SettingsPanel({
   onRestore,
   onPreviewSound,
   onRequestNotifications,
+  pushState,
+  pushBusy,
+  pushError,
+  onTogglePush,
   lock,
   onSetupLock,
   onChangePin,
@@ -149,6 +158,11 @@ export function SettingsPanel({
   onPreviewSound: (sound: MessageSound) => void;
   /** Asks the browser for notification permission; resolves to whether it was granted. */
   onRequestNotifications: () => Promise<boolean>;
+  /** Whether this browser is signed up for push, and how to change that. */
+  pushState: PushState;
+  pushBusy: boolean;
+  pushError: string | null;
+  onTogglePush: (on: boolean) => void;
   lock: LockConfig | null;
   onSetupLock: () => void;
   onChangePin: () => void;
@@ -338,6 +352,44 @@ export function SettingsPanel({
                 }}
               />
             </div>
+            {/* The one that works with the app shut. Everything below it
+                only fires while a tab is open, which is no use when a call
+                is coming in and nobody is looking at the dialer. */}
+            <div className="mt-4 rounded-2xl border border-[#C0272D]/20 bg-[#C0272D]/[0.04] p-3 dark:border-[#C0272D]/30 dark:bg-[#C0272D]/[0.08]">
+              {pushState === "needs-install" ? (
+                <>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Alerts when the app is closed</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                    On iPhone and iPad this needs the app on your Home Screen first. Tap the Share button in Safari, choose{" "}
+                    <span className="font-semibold">Add to Home Screen</span>, then open Business Caller from there and come
+                    back to this setting.
+                  </p>
+                </>
+              ) : pushState === "unsupported" ? (
+                <>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Alerts when the app is closed</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                    This browser can&apos;t do it. Chrome or Edge on Android and desktop can, and so can an iPhone once the app
+                    is on the Home Screen.
+                  </p>
+                </>
+              ) : (
+                <Toggle
+                  label="Alerts when the app is closed"
+                  hint="Shows who is calling, and who texted, even with every tab shut. This is the one that tells you the number before you pick up."
+                  checked={pushState === "on"}
+                  disabled={pushBusy || pushState === "denied"}
+                  onChange={(on) => onTogglePush(on)}
+                />
+              )}
+              {pushState === "denied" && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                  Notifications are blocked for this site. Allow them in your browser settings, then turn this on.
+                </p>
+              )}
+              {pushError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{pushError}</p>}
+            </div>
+
             <div className="mt-2 divide-y divide-slate-900/5 dark:divide-white/5">
               <Toggle
                 label="Desktop notifications"

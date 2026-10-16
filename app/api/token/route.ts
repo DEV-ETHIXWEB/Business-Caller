@@ -117,5 +117,9 @@ export async function POST(req: Request) {
     avatarUrl: profile.avatarUrl,
     about: profile.about,
     status: profile.status,
+    // The browser needs this to subscribe for notifications. It is a
+    // public key by design - it identifies this server to the push
+    // service and is useless for reading anything.
+    vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? null,
   });
 }
