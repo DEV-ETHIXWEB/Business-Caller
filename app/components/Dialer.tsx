@@ -383,7 +383,16 @@ const MAX_STATUS_TEXT_LENGTH = 40;
 
 const MISSED_STATUSES = new Set(["no-answer", "busy", "failed", "canceled"]);
 
+// Statuses where the call never reached the other end at all - Twilio
+// refused it, or the carrier did. Worth separating from "nobody picked up":
+// a number with no voice handler configured comes back as `failed`, and
+// calling that "No answer" sends someone looking for a person who was never
+// rung in the first place.
+const UNREACHABLE_STATUSES = new Set(["failed", "canceled"]);
+
 function callStatusLabel(entry: CallLogEntry): string {
+  if (UNREACHABLE_STATUSES.has(entry.status)) return "Couldn't connect";
+  if (entry.status === "busy") return "Busy";
   if (MISSED_STATUSES.has(entry.status)) {
     return entry.direction === "inbound" ? "Missed" : "No answer";
   }
@@ -772,6 +781,11 @@ export default function Dialer() {
   const [callsSearch, setCallsSearch] = useState("");
   const [textsSearch, setTextsSearch] = useState("");
   const [contactsSearch, setContactsSearch] = useState("");
+  // A number from the call history that is being given a name, so it can be
+  // saved to the Phone Book without leaving the Calls tab.
+  const [namingNumber, setNamingNumber] = useState<string | null>(null);
+  const [namingName, setNamingName] = useState("");
+  const [namingError, setNamingError] = useState<string | null>(null);
 
   // Whether this browser/device has Face ID, Touch ID, or Windows Hello
   // available at all - checked once on mount, used to decide whether to
@@ -2522,6 +2536,43 @@ export default function Dialer() {
     }
   }
 
+  // Saves a number straight from the call history (or anywhere else that
+  // shows a bare number). Everything else about the Phone Book lives in the
+  // Contacts tab, but a number you just spoke to is exactly when you know
+  // who it was - so asking for a name here saves retyping it there.
+  async function handleSaveNumberAsContact(e: React.FormEvent) {
+    e.preventDefault();
+    playTap();
+    setNamingError(null);
+
+    const number = namingNumber ?? "";
+    const name = namingName.trim();
+    if (!name) {
+      setNamingError("Enter a name.");
+      return;
+    }
+    if (!isValidE164(number)) {
+      setNamingError("That number can't be saved.");
+      return;
+    }
+    if (contacts.some((c) => c.number === number)) {
+      setNamingError("That number is already in your contacts.");
+      return;
+    }
+
+    const next = [...contacts, { id: crypto.randomUUID(), name, number }];
+    setContacts(next);
+    setNamingNumber(null);
+    setNamingName("");
+    setToast(`${name} saved to contacts`);
+
+    const ok = await saveContactsToServer(next);
+    if (!ok) {
+      setToast("Could not save the contact");
+      await fetchContacts();
+    }
+  }
+
   async function handleDeleteContact(id: string) {
     const next = contacts.filter((c) => c.id !== id);
     setContacts(next);
@@ -2858,6 +2909,21 @@ export default function Dialer() {
                   >
                     <MessageIcon className="h-3.5 w-3.5" />
                   </button>
+                  {!name && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playTap();
+                        setNamingNumber(entry.with);
+                        setNamingName("");
+                        setNamingError(null);
+                      }}
+                      className={MINI_ICON_BUTTON_CLASS}
+                      aria-label={`Save ${entry.with} to contacts`}
+                    >
+                      <PersonPlusIcon className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleDeleteCall(entry.sid)}
@@ -4744,6 +4810,64 @@ export default function Dialer() {
           ]}
           onClose={() => setClearChatFor(null)}
         />
+      )}
+
+      {/* Naming a number straight from the call history. A small sheet
+          rather than a jump to the Contacts tab, so the person stays where
+          they were and the number is filled in for them. */}
+      {namingNumber && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-[fade-in_0.2s_ease-out] lg:items-center">
+          <form
+            onSubmit={(e) => void handleSaveNumberAsContact(e)}
+            className="w-full rounded-t-3xl border border-white/70 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-20px_50px_-15px_rgba(15,23,42,0.4)] animate-[slide-fade-in_0.2s_ease-out] dark:border-white/10 dark:bg-[#17181c] lg:max-w-sm lg:rounded-3xl lg:pb-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Save to contacts"
+          >
+            <div className="flex items-center gap-3">
+              <Avatar label={namingName || namingNumber} size="lg" />
+              <div className="min-w-0 flex-1">
+                <p className="text-base font-semibold text-slate-900 dark:text-white">Save to contacts</p>
+                <p className="truncate text-sm tabular-nums text-slate-500 dark:text-slate-400">{namingNumber}</p>
+              </div>
+            </div>
+
+            <input
+              value={namingName}
+              onChange={(e) => {
+                setNamingName(e.target.value);
+                setNamingError(null);
+              }}
+              placeholder="Name"
+              aria-label="Name"
+              autoFocus
+              className={`${INPUT_CLASS} mt-4`}
+            />
+            {namingError && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{namingError}</p>}
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  playTap();
+                  setNamingNumber(null);
+                  setNamingName("");
+                  setNamingError(null);
+                }}
+                className="flex-1 rounded-full border border-slate-900/10 py-2.5 text-sm font-semibold text-slate-600 transition-all active:scale-[0.98] dark:border-white/10 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!namingName.trim()}
+                className="flex-1 rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] py-2.5 text-sm font-semibold text-white transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
       {confirmDeleteChats && (
