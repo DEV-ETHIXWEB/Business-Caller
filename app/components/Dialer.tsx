@@ -10,7 +10,7 @@ import {
   startRegistration,
 } from "@simplewebauthn/browser";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
-import type { Contact } from "@/lib/contacts";
+import { byName, contactMatches, numberMatches, type Contact } from "@/lib/contacts";
 import type { ConversationSummary, ThreadMessage } from "@/lib/messageThread";
 import type { CallLogEntry } from "@/lib/callLog";
 import type { PublicCredentialInfo } from "@/lib/webauthn";
@@ -25,6 +25,7 @@ import { Composer } from "./chat/Composer";
 import { ConversationList } from "./chat/ConversationList";
 import { MessageBubble } from "./chat/MessageBubble";
 import { ConfirmSheet } from "./chat/ConfirmSheet";
+import { ContactDetail } from "./screens/ContactDetail";
 import { StarredView } from "./chat/StarredView";
 import { ChatInfo } from "./chat/ChatInfo";
 import { MessageInfoDialog, type MessageInfo } from "./chat/MessageInfoDialog";
@@ -783,6 +784,10 @@ export default function Dialer() {
   const [contactsSearch, setContactsSearch] = useState("");
   // A number from the call history that is being given a name, so it can be
   // saved to the Phone Book without leaving the Calls tab.
+  // The contact whose page is open, by id - held by id rather than by value
+  // so an edit elsewhere is reflected without the page going stale.
+  const [openContactId, setOpenContactId] = useState<string | null>(null);
+  const [confirmDeleteContact, setConfirmDeleteContact] = useState<Contact | null>(null);
   const [namingNumber, setNamingNumber] = useState<string | null>(null);
   const [namingName, setNamingName] = useState("");
   const [namingError, setNamingError] = useState<string | null>(null);
@@ -1700,9 +1705,11 @@ export default function Dialer() {
   // Contacts are shared across every device via app/api/contacts/route.ts -
   // fetched once on unlock, then re-fetched after every add/delete so this
   // browser's list stays in sync with whatever it just wrote.
-  const fetchContacts = useCallback(async () => {
+  // Returns the list it fetched, so a caller about to write can start from
+  // the server's copy rather than a possibly stale one (see handleSaveContact).
+  const fetchContacts = useCallback(async (): Promise<Contact[] | null> => {
     const saved = loadSession();
-    if (!saved) return;
+    if (!saved) return null;
     setContactsLoading(true);
     try {
       const res = await fetch("/api/contacts", {
@@ -1713,9 +1720,12 @@ export default function Dialer() {
       const data = (await res.json().catch(() => ({}))) as { contacts?: Contact[] };
       if (res.ok && data.contacts) {
         setContacts(data.contacts);
+        return data.contacts;
       }
+      return null;
     } catch {
       // Silent - the list simply refreshes next time it's shown.
+      return null;
     } finally {
       setContactsLoading(false);
     }
@@ -2576,9 +2586,29 @@ export default function Dialer() {
   async function handleDeleteContact(id: string) {
     const next = contacts.filter((c) => c.id !== id);
     setContacts(next);
+    setOpenContactId((open) => (open === id ? null : open));
 
     const ok = await saveContactsToServer(next);
     if (!ok) await fetchContacts();
+  }
+
+  // Saving an edit from the contact's own page.
+  //
+  // The contacts API replaces the whole list on every write, and the list is
+  // only fetched once at unlock - so writing from a stale copy would wipe
+  // anything another device added since. Re-reading first keeps this edit
+  // from clobbering someone else's.
+  async function handleSaveContact(updated: Contact) {
+    const fresh = (await fetchContacts()) ?? contacts;
+    const next = fresh.map((c) => (c.id === updated.id ? updated : c));
+    setContacts(next);
+    setToast(`${updated.name} saved`);
+
+    const ok = await saveContactsToServer(next);
+    if (!ok) {
+      setToast("Could not save the contact");
+      await fetchContacts();
+    }
   }
 
   // Confirms the number typed into the "new message" box and opens it as a
@@ -2830,18 +2860,20 @@ export default function Dialer() {
   // referencing them here before their textual definition is fine - what
   // matters is that this sits after all the state/hooks it reads.
   const filteredCalls = callLog.filter((entry) => {
-    const q = callsSearch.trim().toLowerCase();
+    const q = callsSearch.trim();
     if (!q) return true;
     const name = contacts.find((ct) => ct.number === entry.with)?.name ?? "";
-    return name.toLowerCase().includes(q) || entry.with.includes(q);
+    // numberMatches compares digits only, so "206 452" and "(206) 452"
+    // find a number stored as +12064523433.
+    return name.toLowerCase().includes(q.toLowerCase()) || numberMatches(entry.with, q);
   });
 
 
-  const filteredContacts = contacts.filter((c) => {
-    const q = contactsSearch.trim().toLowerCase();
-    if (!q) return true;
-    return c.name.toLowerCase().includes(q) || c.number.includes(q);
-  });
+  // Sorted by name: the list used to come back in whatever order things were
+  // added, which is fine for three contacts and useless for fifty.
+  const filteredContacts = contacts.filter((c) => contactMatches(c, contactsSearch)).sort(byName);
+
+  const openContact = openContactId ? contacts.find((c) => c.id === openContactId) ?? null : null;
 
   function openDialOverlay() {
     playTap();
@@ -3988,13 +4020,23 @@ export default function Dialer() {
         )}
         {filteredContacts.map((c, i) => (
           <div key={c.id} className={`${LIST_ROW_CLASS} ${ROW_ENTRANCE_CLASS}`} style={staggerStyle(i)}>
-            <div className="flex min-w-0 flex-1 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                playTap();
+                setOpenContactId(c.id);
+              }}
+              className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              aria-label={`Open ${c.name}`}
+            >
               <Avatar label={c.name} size="lg" />
               <div className="min-w-0">
                 <p className="truncate text-[0.9375rem] font-semibold text-slate-800 dark:text-slate-100">{c.name}</p>
-                <p className="mt-0.5 truncate text-[0.8125rem] text-slate-500 dark:text-slate-400">{c.number}</p>
+                <p className="mt-0.5 truncate text-[0.8125rem] text-slate-500 dark:text-slate-400">
+                  {c.company ? `${c.company} · ${c.number}` : c.number}
+                </p>
               </div>
-            </div>
+            </button>
             <div className="flex shrink-0 gap-1.5">
               <button
                 type="button"
@@ -4019,7 +4061,10 @@ export default function Dialer() {
               </button>
               <button
                 type="button"
-                onClick={() => handleDeleteContact(c.id)}
+                onClick={() => {
+                  playTap();
+                  setConfirmDeleteContact(c);
+                }}
                 className={MINI_ICON_BUTTON_CLASS}
                 aria-label={`Delete ${c.name}`}
               >
@@ -4868,6 +4913,50 @@ export default function Dialer() {
             </div>
           </form>
         </div>
+      )}
+
+      {/* A contact's own page. Rendered above everything else, with its own
+          back button, the same way the chat layer works on a phone. */}
+      {openContact && (
+        <ContactDetail
+          contact={openContact}
+          calls={callLog.filter((entry) => entry.with === openContact.number)}
+          onClose={() => setOpenContactId(null)}
+          onCall={(number) => {
+            setOpenContactId(null);
+            void dialNumber(number);
+          }}
+          onMessage={(number) => {
+            playTap();
+            setOpenContactId(null);
+            setMessageTo(number);
+            setActiveThread(number);
+            setActiveTab("texts");
+          }}
+          onSave={(updated) => void handleSaveContact(updated)}
+          onDelete={(contact) => {
+            playTap();
+            setConfirmDeleteContact(contact);
+          }}
+          statusLabel={callStatusLabel}
+          relativeDay={relativeDay}
+          isMissed={(entry) => MISSED_STATUSES.has(entry.status)}
+        />
+      )}
+
+      {confirmDeleteContact && (
+        <ConfirmSheet
+          title={`Delete ${confirmDeleteContact.name}?`}
+          body="They are removed from your Phone Book on every device. Their calls and texts stay where they are - only the saved name goes."
+          options={[
+            {
+              label: "Delete contact",
+              danger: true,
+              run: () => void handleDeleteContact(confirmDeleteContact.id),
+            },
+          ]}
+          onClose={() => setConfirmDeleteContact(null)}
+        />
       )}
 
       {confirmDeleteChats && (

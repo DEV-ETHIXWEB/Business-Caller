@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { requireUser } from "@/lib/auth";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
-import type { Contact } from "@/lib/contacts";
+import type { Contact, ContactNumber } from "@/lib/contacts";
 
 // Requires Node's crypto module (via requireUser / the twilio SDK), so
 // this must run on the Node.js runtime, not Edge.
@@ -67,6 +67,19 @@ async function writeContacts(client: ReturnType<typeof twilio>, username: string
   }
 }
 
+// Caps, so one contact can't grow until the 16KB Sync document bursts.
+const MAX_NUMBERS_PER_CONTACT = 5;
+const MAX_LABEL_LENGTH = 20;
+const MAX_NOTES_LENGTH = 500;
+const MAX_COMPANY_LENGTH = 80;
+
+// Strips control characters and collapses whitespace, the same way
+// lib/profileStore.ts cleanText does for the profile fields.
+function cleanField(value: unknown, max: number): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
 function validateContacts(input: unknown): Contact[] | null {
   if (!Array.isArray(input) || input.length > MAX_CONTACTS) return null;
 
@@ -82,12 +95,43 @@ function validateContacts(input: unknown): Contact[] | null {
       return null;
     }
 
-    const id = (entry as Record<string, string>).id;
-    const name = (entry as Record<string, string>).name.trim();
-    const number = normalizePhoneNumber((entry as Record<string, string>).number);
+    const raw = entry as Record<string, unknown>;
+    const id = raw.id as string;
+    const name = (raw.name as string).trim();
+    const number = normalizePhoneNumber(raw.number as string);
     if (!id || !name || !isValidE164(number)) return null;
 
-    result.push({ id, name, number });
+    // The optional fields are rebuilt field by field rather than spread, so
+    // nothing unexpected can be written into the Sync document - but they
+    // must be rebuilt, not dropped. This used to return a bare
+    // {id, name, number}, which silently threw away notes and extra numbers
+    // on every save: the UI showed them until the next reload, then they
+    // were gone.
+    const contact: Contact = { id, name, number };
+
+    const extras = raw.extraNumbers;
+    if (Array.isArray(extras)) {
+      const cleaned: ContactNumber[] = [];
+      for (const item of extras.slice(0, MAX_NUMBERS_PER_CONTACT)) {
+        if (typeof item !== "object" || item === null) continue;
+        const e = item as Record<string, unknown>;
+        if (typeof e.number !== "string") continue;
+        const extraNumber = normalizePhoneNumber(e.number);
+        if (!isValidE164(extraNumber)) continue;
+        cleaned.push({
+          label: cleanField(e.label, MAX_LABEL_LENGTH) || "Other",
+          number: extraNumber,
+        });
+      }
+      if (cleaned.length) contact.extraNumbers = cleaned;
+    }
+
+    const notes = cleanField(raw.notes, MAX_NOTES_LENGTH);
+    if (notes) contact.notes = notes;
+    const company = cleanField(raw.company, MAX_COMPANY_LENGTH);
+    if (company) contact.company = company;
+
+    result.push(contact);
   }
   return result;
 }
