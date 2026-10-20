@@ -786,6 +786,11 @@ export default function Dialer() {
   // saved to the Phone Book without leaving the Calls tab.
   // The contact whose page is open, by id - held by id rather than by value
   // so an edit elsewhere is reflected without the page going stale.
+  // Do Not Disturb lives on the server (lib/callRules.ts) because the call
+  // webhook has to read it - a localStorage setting could never be honoured
+  // by anything outside this one browser.
+  const [dnd, setDnd] = useState(false);
+  const [dndBusy, setDndBusy] = useState(false);
   const [openContactId, setOpenContactId] = useState<string | null>(null);
   const [confirmDeleteContact, setConfirmDeleteContact] = useState<Contact | null>(null);
   const [namingNumber, setNamingNumber] = useState<string | null>(null);
@@ -2242,6 +2247,38 @@ export default function Dialer() {
     }
   }
 
+  // The server's rules are the shared truth: a number blocked on a phone
+  // must show as blocked here too, and DND is not a per-device setting.
+  useEffect(() => {
+    if (!unlocked) return;
+    const saved = loadSession();
+    if (!saved) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/call-rules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(saved),
+        });
+        const data = (await res.json().catch(() => ({}))) as { rules?: { blocked?: string[]; dnd?: boolean } };
+        if (cancelled || !res.ok || !data.rules) return;
+        setDnd(!!data.rules.dnd);
+        const serverBlocked = data.rules.blocked ?? [];
+        // Adopt anything blocked elsewhere that this browser doesn't know
+        // about yet, so the chat list hides it straight away.
+        for (const number of serverBlocked) {
+          if (!blockedRef.current.includes(number)) chatPrefs.toggleBlock(number);
+        }
+      } catch {
+        // Falls back to whatever this browser already had.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [unlocked, chatPrefs]);
+
   // Reflect whatever this browser's real subscription state is, rather than
   // whatever was last clicked - permission can be changed in browser
   // settings, and site data can be cleared, both behind the app's back.
@@ -2598,6 +2635,46 @@ export default function Dialer() {
   // only fetched once at unlock - so writing from a stale copy would wipe
   // anything another device added since. Re-reading first keeps this edit
   // from clobbering someone else's.
+  // The server copy of "who is blocked" and "is DND on". chatPrefs keeps a
+  // local copy too, because that is what hides a chat in the list, but the
+  // server's is the one the webhooks obey.
+  const pushCallRules = useCallback(async (blocked: string[], dndOn: boolean) => {
+    const saved = loadSession();
+    if (!saved) return;
+    try {
+      await fetch("/api/call-rules", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...saved, blocked, dnd: dndOn }),
+      });
+    } catch {
+      // The local list still hides the chat; the next change retries.
+    }
+  }, []);
+
+  const blockedRef = useRef<string[]>([]);
+  useEffect(() => {
+    blockedRef.current = chatPrefs.prefs.blocked;
+  });
+
+  // Blocking has to update both: the local list (so the chat disappears
+  // right away) and the server list (so the call is actually turned away).
+  function handleToggleBlock(number: string) {
+    const next = blockedRef.current.includes(number)
+      ? blockedRef.current.filter((n) => n !== number)
+      : [...blockedRef.current, number];
+    chatPrefs.toggleBlock(number);
+    void pushCallRules(next, dnd);
+  }
+
+  async function handleDndChange(on: boolean) {
+    setDndBusy(true);
+    setDnd(on);
+    await pushCallRules(blockedRef.current, on);
+    setDndBusy(false);
+    setToast(on ? "Do not disturb is on" : "Do not disturb is off");
+  }
+
   async function handleSaveContact(updated: Contact) {
     const fresh = (await fetchContacts()) ?? contacts;
     const next = fresh.map((c) => (c.id === updated.id ? updated : c));
@@ -3588,7 +3665,7 @@ export default function Dialer() {
                   { key: "mute", label: chatPrefs.isMuted(activeThread) ? "Unmute notifications" : "Mute notifications", run: () => (chatPrefs.isMuted(activeThread) ? chatPrefs.mute(activeThread, 0) : setMuteSheetFor(activeThread)) },
                   { key: "export", label: "Export chat", run: () => void exportChat() },
                   { key: "link", label: "Copy chat link", run: copyChatLink },
-                  { key: "block", label: chatPrefs.isBlocked(activeThread) ? "Unblock" : "Block", run: () => chatPrefs.toggleBlock(activeThread), danger: true },
+                  { key: "block", label: chatPrefs.isBlocked(activeThread) ? "Unblock" : "Block", run: () => handleToggleBlock(activeThread), danger: true },
                   { key: "clear", label: "Clear chat", run: () => setClearChatFor(activeThread), danger: true },
                   { key: "delete", label: "Delete chat", run: () => void handleDeleteConversation(activeThread), danger: true },
                 ].map((it) => (
@@ -3736,7 +3813,7 @@ export default function Dialer() {
         {chatPrefs.isBlocked(activeThread) ? (
           <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-900/[0.06] px-4 py-3 dark:bg-white/[0.08]" role="status">
             <p className="text-sm text-slate-600 dark:text-slate-300">You blocked this number, so you cannot send messages to it.</p>
-            <button type="button" onClick={() => chatPrefs.toggleBlock(activeThread)} className="shrink-0 rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] px-4 py-2 text-xs font-semibold text-white active:scale-95">
+            <button type="button" onClick={() => handleToggleBlock(activeThread)} className="shrink-0 rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] px-4 py-2 text-xs font-semibold text-white active:scale-95">
               Unblock
             </button>
           </div>
@@ -5138,8 +5215,11 @@ export default function Dialer() {
           signOutDisabled={canHangUp}
           onClose={() => setSettingsOpen(false)}
           blocked={chatPrefs.prefs.blocked.map((number) => ({ number, name: contacts.find((c) => c.number === number)?.name }))}
+          dnd={dnd}
+          dndBusy={dndBusy}
+          onDndChange={(on) => void handleDndChange(on)}
           onUnblock={(number) => {
-            chatPrefs.toggleBlock(number);
+            handleToggleBlock(number);
             setToast("Unblocked");
           }}
           onBackup={() => {

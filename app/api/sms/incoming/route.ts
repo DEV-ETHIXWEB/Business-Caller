@@ -4,6 +4,7 @@ import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
 import { getClientIp, rateLimit } from "@/lib/rateLimit";
 import { findUserByPhoneNumber } from "@/lib/users";
 import { lookupContactName } from "@/lib/callerName";
+import { isBlocked, readCallRules } from "@/lib/callRules";
 import { sendPush } from "@/lib/push";
 
 // Requires Node's crypto module (via the twilio SDK's request validation),
@@ -89,6 +90,13 @@ export async function POST(req: Request) {
   // behind it.
   after(async () => {
     try {
+      // A blocked number gets no notification. The text itself still
+      // arrives and is still billed - it reaches Twilio before this app
+      // sees it, and nothing can change that - but it will not buzz anyone's
+      // phone, and the chat stays hidden in the app.
+      const rules = await readCallRules(user.username);
+      if (isBlocked(rules, from)) return;
+
       const name = isValidE164(from) ? await lookupContactName(user.username, from) : undefined;
       await sendPush(user.username, {
         kind: "message",

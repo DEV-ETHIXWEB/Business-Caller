@@ -124,6 +124,9 @@ export function SettingsPanel({
   onClose,
   blocked,
   onUnblock,
+  dnd,
+  dndBusy,
+  onDndChange,
   onBackup,
   onRestore,
   onPreviewSound,
@@ -153,6 +156,10 @@ export function SettingsPanel({
   onClose: () => void;
   blocked: { number: string; name?: string }[];
   onUnblock: (number: string) => void;
+  /** Do Not Disturb, stored server-side so the call webhook can honour it. */
+  dnd: boolean;
+  dndBusy: boolean;
+  onDndChange: (on: boolean) => void;
   onBackup: () => void;
   onRestore: (file: File) => void;
   onPreviewSound: (sound: MessageSound) => void;
@@ -422,6 +429,19 @@ export function SettingsPanel({
             </div>
           </section>
 
+          <section className={SECTION_CLASS} aria-label="Do not disturb">
+            <p className={LABEL_CLASS}>Do not disturb</p>
+            <div className="mt-1">
+              <Toggle
+                label="Turn away incoming calls"
+                hint="Callers hear an engaged tone instead of ringing you, your phone or the dialer. Texts still arrive. This applies everywhere, not just on this device."
+                checked={dnd}
+                disabled={dndBusy}
+                onChange={(on) => onDndChange(on)}
+              />
+            </div>
+          </section>
+
           <section className={SECTION_CLASS} aria-label="Privacy">
             <p className={LABEL_CLASS}>Privacy</p>
             <p className="mt-3 text-sm font-medium text-slate-800 dark:text-slate-100">Blocked contacts</p>
@@ -441,7 +461,8 @@ export function SettingsPanel({
               </ul>
             )}
             <p className="mt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-              Blocking is only in this app: it hides the chat and stops you sending. The person can still text your number, and Twilio still receives it.
+              A blocked number can&apos;t get through: their calls are turned away before anything rings, and their texts never notify you. The block
+              applies on every device you sign in from. Their texts do still reach your number inside Twilio, which no setting can prevent.
             </p>
           
             <p className="mt-4 text-sm font-medium text-slate-800 dark:text-slate-100">App lock</p>

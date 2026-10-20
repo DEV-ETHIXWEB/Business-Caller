@@ -4,6 +4,7 @@ import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
 import { getClientIp, rateLimit } from "@/lib/rateLimit";
 import { findUserByPhoneNumber } from "@/lib/users";
 import { lookupContactName } from "@/lib/callerName";
+import { isBlocked, readCallRules, shouldSilence } from "@/lib/callRules";
 import { sendPush } from "@/lib/push";
 
 // Requires Node's crypto module (via the twilio SDK's request validation),
@@ -90,6 +91,31 @@ export async function POST(req: Request) {
   }
 
   const caller = normalizePhoneNumber(params.From ?? "");
+
+  // Before anything rings: is this caller blocked, or is Do Not Disturb on?
+  //
+  // Both are checked here rather than in the browser, because the browser
+  // may well be closed - and because a block that only hides a chat on one
+  // laptop was never really a block. Rejecting before the call is answered
+  // also means Twilio doesn't bill it.
+  const rules = await readCallRules(user.username);
+
+  if (isBlocked(rules, caller)) {
+    console.info(`[api/voice/incoming] Rejected a blocked caller for ${user.username}.`);
+    const vr = new twilio.twiml.VoiceResponse();
+    vr.reject({ reason: "rejected" });
+    return xmlResponse(vr.toString());
+  }
+
+  if (shouldSilence(rules)) {
+    console.info(`[api/voice/incoming] Do Not Disturb is on for ${user.username}; call turned away.`);
+    const vr = new twilio.twiml.VoiceResponse();
+    // "busy" rather than "rejected": the caller hears an engaged tone, which
+    // reads as "they're unavailable right now" rather than "this number is
+    // dead".
+    vr.reject({ reason: "busy" });
+    return xmlResponse(vr.toString());
+  }
 
   // Tell this person's devices who is calling, while the phone is still
   // ringing. `after` runs it once the TwiML has already gone back to
