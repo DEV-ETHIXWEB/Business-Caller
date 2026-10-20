@@ -1282,6 +1282,78 @@ export default function Dialer() {
   // Called on every tap throughout the app (35+ call sites) - one shared
   // function, so both the sound and haptic feedback below apply everywhere
   // at once rather than needing to be wired into each button individually.
+  // An incoming call used to be completely silent in the app. The only
+  // sound was the OS push notification, so a call arriving while the dialer
+  // was open and in front of you made no noise at all - you had to happen
+  // to be looking at the screen.
+  //
+  // Synthesised the same way every other sound here is (two alternating
+  // tones, the shape of a telephone ring), so there is no audio file to
+  // ship and nothing to load before it can play.
+  const ringTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopRinging = useCallback(() => {
+    if (ringTimerRef.current) {
+      clearInterval(ringTimerRef.current);
+      ringTimerRef.current = null;
+    }
+  }, []);
+
+  const startRinging = useCallback(() => {
+    if (ringTimerRef.current) return;
+
+    const burst = () => {
+      if (settingsRef.current.haptics && "vibrate" in navigator) {
+        try {
+          navigator.vibrate?.([400, 200, 400]);
+        } catch {
+          // Vibration is a nicety; iOS refuses it outright.
+        }
+      }
+      if (!settingsRef.current.sounds) return;
+      try {
+        const AudioCtx =
+          window.AudioContext ||
+          (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = audioCtxRef.current ?? new AudioCtx();
+        audioCtxRef.current = ctx;
+        if (ctx.state === "suspended") void ctx.resume();
+
+        // Two short double-tones, as a landline ring sounds.
+        for (const offset of [0, 0.4]) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(480, ctx.currentTime + offset);
+          gain.gain.setValueAtTime(0.0001, ctx.currentTime + offset);
+          gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + offset + 0.02);
+          gain.gain.setValueAtTime(0.18, ctx.currentTime + offset + 0.28);
+          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + offset + 0.32);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(ctx.currentTime + offset);
+          osc.stop(ctx.currentTime + offset + 0.34);
+        }
+      } catch {
+        // Never let a missing audio device stop the call screen appearing.
+      }
+    };
+
+    burst();
+    ringTimerRef.current = setInterval(burst, 3000);
+  }, []);
+
+  // Ring for as long as the incoming-call screen is up, and stop the moment
+  // it goes - answered, declined, or the caller gave up.
+  useEffect(() => {
+    if (incomingFrom === null) {
+      stopRinging();
+      return;
+    }
+    startRinging();
+    return stopRinging;
+  }, [incomingFrom, startRinging, stopRinging]);
+
   const playTap = useCallback(() => {
     // Haptics: most Android browsers implement the Vibration API. iOS
     // Safari does not expose it at all (a WebKit platform choice, not
