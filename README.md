@@ -245,6 +245,21 @@ compliance step, not something this app's code can work around.
   the far leg was moved. If an upgrade ever fails midway, the far leg is
   ended rather than left stranded (and billing) alone in a conference.
   Requires `PUBLIC_BASE_URL` (already set); no other new env vars.
+- **Contact pages**: tap anyone in the Contacts tab to open their page -
+  every number they have (each with its own call and text button), their
+  company, your notes, and their recent calls. Edit and delete are there
+  too; deleting asks first. A contact can hold extra numbers, notes and a
+  company alongside the primary number, which stays the one everything else
+  matches on when it turns a number back into a name.
+- **Blocking**: a blocked number's calls are turned away before anything
+  rings (so Twilio doesn't bill them) and their texts never notify you. The
+  list lives server-side, so blocking on a phone blocks on a laptop too.
+  Their texts still reach your Twilio number - that happens before this app
+  is consulted, and no setting can prevent it.
+- **Do not disturb**: turns incoming calls away with an engaged tone
+  instead of ringing you, your phone or the dialer. Texts still arrive.
+  Stored server-side with the block list, because the call webhook has to
+  read it - a per-device setting could never be honoured.
 - **Call history**: the Calls tab lists every past call (pulled live from
   Twilio's own Call records via `/api/calls`, most recent first) with who
   it was with, incoming/outgoing/missed status, duration, and when. Tap a
@@ -623,6 +638,9 @@ app/
   api/voice/incoming/route.ts  TwiML webhook for a call *to* one of the numbers: rings that person's browser (and their forwardTo phone) under the caller's own number, and pushes "X is calling"
   api/sms/incoming/route.ts    Webhook for a text arriving on one of the numbers: pushes the sender and a preview, and replies with nothing
   api/push/subscribe/route.ts  Registers/removes this browser for notifications
+  lib/callRules.ts         Who is blocked and whether Do Not Disturb is on, per person, in Twilio Sync - read by the incoming webhooks
+  api/call-rules/route.ts  Reads and replaces those rules for the signed-in user
+  components/screens/ContactDetail.tsx  One contact's page: numbers, notes, company, their recent calls, edit and delete
   lib/push.ts              Sends a notification to every device a person has turned alerts on for
   lib/pushStore.ts         Those devices' push subscriptions, per person, in Twilio Sync
   lib/notifications.ts     Browser side: service worker, permission, subscribe (and the iOS Home Screen rule)
