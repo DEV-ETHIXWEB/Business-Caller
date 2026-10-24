@@ -36,7 +36,11 @@ export function proxy(request: NextRequest) {
     // photos actually live (app/api/avatar/route.ts uploads them there and
     // stores the public URL), so without it every avatar is blocked.
     "img-src 'self' blob: data: https://*.public.blob.vercel-storage.com",
-    "media-src 'self' blob: data:",
+    // The Voice SDK plays its DTMF tones and call sounds with `new Audio()`
+    // pointed at sdk.twilio.com, which media-src governs. Without it here
+    // the keypad is silent mid-call: the digits still reach the far end,
+    // but you hear nothing when you press them, so it feels broken.
+    "media-src 'self' blob: data: https://sdk.twilio.com",
     "font-src 'self'",
     // The Twilio Voice SDK signals over a WebSocket and fetches ICE/region
     // details over HTTPS. Without these, calling stops working entirely.

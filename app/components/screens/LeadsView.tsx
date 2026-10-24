@@ -118,13 +118,17 @@ export function LeadsView({
               <div className="flex items-start gap-3">
                 <Avatar label={lead.customerName} size="lg" />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  {/* Wraps rather than crushing: on a 320px screen the dot,
+                      the priority chip, the job type and the date together
+                      are wider than the card, and without wrapping the job
+                      type was squeezed to a few pixels of ellipsis. */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} />
-                    <span className={`rounded-full px-1.5 py-0.5 text-[0.625rem] font-bold uppercase tracking-wide ${style.chip}`}>
+                    <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[0.625rem] font-bold uppercase tracking-wide ${style.chip}`}>
                       {style.label}
                     </span>
                     {lead.jobType && (
-                      <span className="truncate text-[0.625rem] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      <span className="min-w-0 max-w-[8rem] truncate text-[0.625rem] uppercase tracking-wide text-slate-400 dark:text-slate-500">
                         {lead.jobType}
                       </span>
                     )}
@@ -145,13 +149,13 @@ export function LeadsView({
               </div>
 
               {lead.problem && (
-                <p className="mt-2 text-[0.8125rem] leading-relaxed text-slate-600 dark:text-slate-300">{lead.problem}</p>
+                <p className="mt-2 break-words [overflow-wrap:anywhere] text-[0.8125rem] leading-relaxed text-slate-600 dark:text-slate-300">{lead.problem}</p>
               )}
 
               {lead.address && (
                 <p className="mt-1.5 flex items-start gap-1.5 text-[0.8125rem] text-slate-500 dark:text-slate-400">
                   <MapPinIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span className="min-w-0">{lead.address}</span>
+                  <span className="min-w-0 break-words [overflow-wrap:anywhere]">{lead.address}</span>
                 </p>
               )}
 

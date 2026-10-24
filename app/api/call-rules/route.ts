@@ -78,8 +78,21 @@ export async function PUT(req: Request) {
   }
 
   const rules: CallRules = { blocked, dnd: fields.dnd === true };
-  const hours = validHours(fields.hours);
-  if (hours) rules.hours = hours;
+
+  // Quiet hours that don't parse are refused rather than dropped. Dropping
+  // them while leaving the switch on turns "turn calls away between 9pm and
+  // 7am" into "turn every call away, forever" - the opposite of what was
+  // asked for, silently, on a business line.
+  if (fields.hours !== undefined && fields.hours !== null) {
+    const hours = validHours(fields.hours);
+    if (!hours) {
+      return NextResponse.json(
+        { error: "Those quiet hours aren't valid. Check the times and the time zone." },
+        { status: 400 },
+      );
+    }
+    rules.hours = hours;
+  }
 
   await writeCallRules(user.username, rules);
   return NextResponse.json({ rules });

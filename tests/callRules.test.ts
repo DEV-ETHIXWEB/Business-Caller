@@ -58,6 +58,15 @@ describe("do not disturb", () => {
     assert.equal(shouldSilence(rules, laTime(12)), true);
   });
 
+  it("never treats a broken window as 'silence everything' by accident", () => {
+    // The API refuses invalid hours rather than dropping them, because
+    // dropping them while the switch stays on silently turns "quiet
+    // 9pm-7am" into "turn every call away, forever". This pins the other
+    // half: hours that DO parse must actually narrow the silence.
+    const rules: CallRules = { blocked: [], dnd: true, hours: { startMinute: 0, endMinute: 24 * 60 - 1, timeZone: TZ } };
+    assert.equal(shouldSilence(rules, laTime(12)), false, "an all-day allow window must let calls through");
+  });
+
   it("stays off regardless of hours when the switch is off", () => {
     const rules: CallRules = { blocked: [], dnd: false, hours: { startMinute: 9 * 60, endMinute: 17 * 60, timeZone: TZ } };
     assert.equal(shouldSilence(rules, laTime(23)), false);
