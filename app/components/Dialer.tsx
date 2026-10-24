@@ -11,11 +11,12 @@ import {
 } from "@simplewebauthn/browser";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
 import { byName, contactMatches, numberMatches, type Contact } from "@/lib/contacts";
+import type { Lead } from "@/lib/leads";
 import type { ConversationSummary, ThreadMessage } from "@/lib/messageThread";
 import type { CallLogEntry } from "@/lib/callLog";
 import type { PublicCredentialInfo } from "@/lib/webauthn";
 import { Avatar, PRESET_COUNT } from "./Avatar";
-import { ArrowDownRightIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpRightIcon, BackspaceIcon, CalendarIcon, CameraIcon, CheckSquareIcon, ShareIcon, TimerIcon, ChevronDownIcon, CloseIcon, CopyIcon, DotsIcon, FingerprintIcon, InfoIcon, PencilIcon, PinIcon, ReplyIcon, StarIcon, ForwardIcon, GearIcon, KeypadIcon, LockIcon, MergeIcon, MessageIcon, MicIcon, MicOffIcon, PauseIcon, PeopleIcon, PersonPlusIcon, PhoneIcon, PlusIcon, SearchIcon, SpeakerIcon, TrashIcon } from "./icons";
+import { MapPinIcon, ArrowDownRightIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpRightIcon, BackspaceIcon, CalendarIcon, CameraIcon, CheckSquareIcon, ShareIcon, TimerIcon, ChevronDownIcon, CloseIcon, CopyIcon, DotsIcon, FingerprintIcon, InfoIcon, PencilIcon, PinIcon, ReplyIcon, StarIcon, ForwardIcon, GearIcon, KeypadIcon, LockIcon, MergeIcon, MessageIcon, MicIcon, MicOffIcon, PauseIcon, PeopleIcon, PersonPlusIcon, PhoneIcon, PlusIcon, SearchIcon, SpeakerIcon, TrashIcon } from "./icons";
 import { SettingsPanel, type ProfileStatusValue } from "./SettingsPanel";
 import { applySettings, useSettings } from "@/lib/settings";
 import { currentPushState, deviceLabel, disablePush, enablePush, PushError, type PushState } from "@/lib/notifications";
@@ -26,6 +27,7 @@ import { ConversationList } from "./chat/ConversationList";
 import { MessageBubble } from "./chat/MessageBubble";
 import { ConfirmSheet } from "./chat/ConfirmSheet";
 import { ContactDetail } from "./screens/ContactDetail";
+import { LeadsView } from "./screens/LeadsView";
 import { StarredView } from "./chat/StarredView";
 import { ChatInfo } from "./chat/ChatInfo";
 import { MessageInfoDialog, type MessageInfo } from "./chat/MessageInfoDialog";
@@ -764,7 +766,16 @@ export default function Dialer() {
   // Which of the three main tabs is showing - the Google Voice-style
   // Calls/Texts/Contacts split, shared by both the desktop nav rail and the
   // mobile bottom bar (there's no separate mobile-only layout anymore).
-  const [activeTab, setActiveTab] = useState<"calls" | "texts" | "contacts">("calls");
+  const [activeTab, setActiveTab] = useState<"calls" | "leads" | "texts" | "contacts">("calls");
+  // Jobs the answering service took while nobody was on the phone. These
+  // arrive as ordinary texts; /api/leads finds and parses them.
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadsSearch, setLeadsSearch] = useState("");
+  // Claiming texts a word back to the answering service. Remembered per
+  // device so the button doesn't invite a second claim while the reply is
+  // still on its way.
+  const [claimedSids, setClaimedSids] = useState<string[]>([]);
   const [callLog, setCallLog] = useState<CallLogEntry[]>([]);
   const [callLogLoading, setCallLogLoading] = useState(false);
   // True when Twilio had more history than one fetch covers, so the list
@@ -1545,11 +1556,17 @@ export default function Dialer() {
       // Until the device is registered Twilio has nowhere to send a call to
       // this browser. A failure here is not fatal - outgoing calls work
       // regardless - so it is reported and otherwise left alone.
-      try {
-        await device.register();
-      } catch (err) {
+      //
+      // Deliberately not awaited. register() opens a WebSocket to Twilio
+      // and does not time out on its own, so awaiting it meant that when
+      // Twilio's signalling was unreachable - a dropped connection, a
+      // captive portal, a blocked network - sign-in sat on "Unlocking…"
+      // forever instead of signing in and saying what was wrong. Everything
+      // else about the app works without it; only ringing in this browser
+      // does not.
+      void device.register().catch((err: unknown) => {
         console.warn("[dialer] Could not register for incoming calls:", err);
-      }
+      });
     },
     [refreshDevices],
   );
@@ -1784,6 +1801,25 @@ export default function Dialer() {
   // browser's list stays in sync with whatever it just wrote.
   // Returns the list it fetched, so a caller about to write can start from
   // the server's copy rather than a possibly stale one (see handleSaveContact).
+  const fetchLeads = useCallback(async () => {
+    const saved = loadSession();
+    if (!saved) return;
+    setLeadsLoading(true);
+    try {
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(saved),
+      });
+      const data = (await res.json().catch(() => ({}))) as { leads?: Lead[] };
+      if (res.ok && data.leads) setLeads(data.leads);
+    } catch {
+      // Silent - the list refreshes next time the tab is opened.
+    } finally {
+      setLeadsLoading(false);
+    }
+  }, []);
+
   const fetchContacts = useCallback(async (): Promise<Contact[] | null> => {
     const saved = loadSession();
     if (!saved) return null;
@@ -2350,6 +2386,22 @@ export default function Dialer() {
       cancelled = true;
     };
   }, [unlocked, chatPrefs]);
+
+  useEffect(() => {
+    if (!unlocked || activeTab !== "leads") return;
+    // Deferred to the next tick, the same way the call log is fetched:
+    // fetchLeads flips a loading flag the moment it is called, and doing
+    // that synchronously inside an effect makes React re-render in a
+    // cascade.
+    const first = setTimeout(() => void fetchLeads(), 0);
+    // A new job arriving while the tab is open is worth seeing without
+    // having to go and come back.
+    const timer = setInterval(() => void fetchLeads(), 120_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [unlocked, activeTab, fetchLeads]);
 
   // Reflect whatever this browser's real subscription state is, rather than
   // whatever was last clicked - permission can be changed in browser
@@ -3031,6 +3083,57 @@ export default function Dialer() {
     setPhoneNumber("");
     setDialOverlayOpen(true);
   }
+
+  // Taking a job: texts the claim word back to whoever sent the summary,
+  // which is how the answering service is told it has been picked up. The
+  // card greys out straight away rather than waiting on the send, because
+  // the useful signal is "I've taken this", and the send retries itself if
+  // the network is down.
+  async function handleClaimLead(lead: Lead) {
+    if (!lead.claimWord || claimedSids.includes(lead.sid)) return;
+    playTap();
+    setClaimedSids((current) => [...current, lead.sid]);
+    setToast(`${lead.customerName} claimed`);
+
+    const saved = loadSession();
+    if (!saved) return;
+    try {
+      const res = await fetch("/api/sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...saved, to: lead.fromNumber, message: lead.claimWord }),
+      });
+      if (!res.ok) {
+        setClaimedSids((current) => current.filter((sid) => sid !== lead.sid));
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setToast(data.error || "Could not claim that lead");
+      }
+    } catch {
+      setClaimedSids((current) => current.filter((sid) => sid !== lead.sid));
+      setToast("Could not claim that lead");
+    }
+  }
+
+  const urgentLeadCount = leads.filter((l) => l.priority === "urgent" && !claimedSids.includes(l.sid)).length;
+
+  const leadsTabBody = (
+    <LeadsView
+      leads={leads}
+      loading={leadsLoading}
+      search={leadsSearch}
+      onSearchChange={setLeadsSearch}
+      onCall={(number) => void dialNumber(number)}
+      onMessage={(number) => {
+        playTap();
+        setMessageTo(number);
+        setActiveThread(number);
+        setActiveTab("texts");
+      }}
+      onClaim={(lead) => void handleClaimLead(lead)}
+      claimedSids={claimedSids}
+      relativeDay={relativeDay}
+    />
+  );
 
   const callsTabBody = (
     <div className="flex h-full min-h-0 flex-col">
@@ -4680,6 +4783,30 @@ export default function Dialer() {
           type="button"
           onClick={() => {
             playTap();
+            setActiveTab("leads");
+          }}
+          className={activeTab === "leads" ? NAV_BUTTON_ACTIVE_CLASS : NAV_BUTTON_INACTIVE_CLASS}
+        >
+          <span className="relative">
+            <MapPinIcon className="h-5 w-5" />
+            {urgentLeadCount > 0 && (
+              <span
+                className={`absolute -right-2.5 -top-2 flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[0.625rem] font-bold leading-none ring-2 ${
+                  activeTab === "leads" ? "bg-white text-[#C0272D] ring-[#C0272D]" : "bg-[#C0272D] text-white ring-white dark:ring-[#0c0d10]"
+                }`}
+                role="status"
+                aria-label={`${urgentLeadCount} urgent leads`}
+              >
+                {urgentLeadCount > 9 ? "9+" : urgentLeadCount}
+              </span>
+            )}
+          </span>
+          Leads
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            playTap();
             setActiveTab("texts");
           }}
           className={activeTab === "texts" ? NAV_BUTTON_ACTIVE_CLASS : NAV_BUTTON_INACTIVE_CLASS}
@@ -4774,6 +4901,7 @@ export default function Dialer() {
           <div className={MAIN_PANEL_CLASS}>
             <div key={activeTab} className="flex h-full min-h-0 flex-1 flex-col animate-[slide-fade-in_0.25s_ease-out]">
               {activeTab === "calls" && callsTabBody}
+              {activeTab === "leads" && leadsTabBody}
               {activeTab === "texts" && textsTabBody}
               {activeTab === "contacts" && contactsTabBody}
             </div>
@@ -4800,6 +4928,30 @@ export default function Dialer() {
           >
             <PhoneIcon className="h-5 w-5" />
             Calls
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              playTap();
+              setActiveTab("leads");
+            }}
+            className={activeTab === "leads" ? NAV_BUTTON_ACTIVE_CLASS : NAV_BUTTON_INACTIVE_CLASS}
+          >
+            <span className="relative">
+              <MapPinIcon className="h-5 w-5" />
+              {urgentLeadCount > 0 && (
+                <span
+                  className={`absolute -right-2.5 -top-2 flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[0.625rem] font-bold leading-none ring-2 ${
+                    activeTab === "leads" ? "bg-white text-[#C0272D] ring-[#C0272D]" : "bg-[#C0272D] text-white ring-white dark:ring-[#0c0d10]"
+                  }`}
+                  role="status"
+                  aria-label={`${urgentLeadCount} urgent leads`}
+                >
+                  {urgentLeadCount > 9 ? "9+" : urgentLeadCount}
+                </span>
+              )}
+            </span>
+            Leads
           </button>
           <button
             type="button"
