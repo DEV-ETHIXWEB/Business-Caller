@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { EMPTY_RULES, isBlocked, shouldSilence, type CallRules } from "@/lib/callRules";
+import { blockedToToggle } from "@/lib/blockedList";
 
 const TZ = "America/Los_Angeles";
 
@@ -70,5 +71,28 @@ describe("do not disturb", () => {
   it("stays off regardless of hours when the switch is off", () => {
     const rules: CallRules = { blocked: [], dnd: false, hours: { startMinute: 9 * 60, endMinute: 17 * 60, timeZone: TZ } };
     assert.equal(shouldSilence(rules, laTime(23)), false);
+  });
+});
+
+describe("reconciling the blocked list with the server", () => {
+  it("adopts a number blocked on another device", () => {
+    assert.deepEqual(blockedToToggle([], ["+12065550111"]), ["+12065550111"]);
+  });
+
+  // The direction that was missing. Without it, an unblock made elsewhere
+  // never arrived, and the next write pushed the stale list back up and
+  // re-blocked the number.
+  it("drops a number unblocked on another device", () => {
+    assert.deepEqual(blockedToToggle(["+12065550111"], []), ["+12065550111"]);
+  });
+
+  it("leaves a list that already agrees alone", () => {
+    assert.deepEqual(blockedToToggle(["+12065550111"], ["+12065550111"]), []);
+  });
+
+  it("toggles each number at most once, so no toggle undoes itself", () => {
+    const out = blockedToToggle(["+1a", "+1b"], ["+1b", "+1c"]);
+    assert.deepEqual(out.sort(), ["+1a", "+1c"]);
+    assert.equal(new Set(out).size, out.length);
   });
 });

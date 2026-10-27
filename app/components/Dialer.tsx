@@ -11,6 +11,7 @@ import {
 } from "@simplewebauthn/browser";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
 import { allNumbers, byName, contactMatches, findContactByNumber, nameForNumber, numberMatches, type Contact } from "@/lib/contacts";
+import { blockedToToggle } from "@/lib/blockedList";
 import type { Lead } from "@/lib/leads";
 import type { ConversationSummary, ThreadMessage } from "@/lib/messageThread";
 import type { CallLogEntry } from "@/lib/callLog";
@@ -2429,18 +2430,10 @@ export default function Dialer() {
         if (cancelled || !res.ok || !data.rules) return;
         setDnd(!!data.rules.dnd);
 
-        // Adopt anything blocked elsewhere that this browser doesn't know
-        // about yet, so the chat list hides it straight away. Each number
-        // is toggled at most once: blockedRef is only refreshed after a
-        // render, so re-reading it inside this loop would still show the
-        // old list and toggle the same number twice - which, being a
-        // toggle, would unblock it again.
-        const alreadyBlocked = new Set(blockedRef.current);
-        for (const number of data.rules.blocked ?? []) {
-          if (!alreadyBlocked.has(number)) {
-            alreadyBlocked.add(number);
-            toggleBlockRef.current(number);
-          }
+        // Make this browser's list match the server's, in both directions -
+        // see blockedToToggle for why one direction was not enough.
+        for (const number of blockedToToggle(blockedRef.current, data.rules.blocked ?? [])) {
+          toggleBlockRef.current(number);
         }
       } catch {
         // Falls back to whatever this browser already had.
@@ -2866,17 +2859,37 @@ export default function Dialer() {
   // The server copy of "who is blocked" and "is DND on". chatPrefs keeps a
   // local copy too, because that is what hides a chat in the list, but the
   // server's is the one the webhooks obey.
-  const pushCallRules = useCallback(async (blocked: string[], dndOn: boolean) => {
+  const pushCallRules = useCallback(async (blocked: string[], dndOn: boolean): Promise<boolean> => {
     const saved = loadSession();
-    if (!saved) return;
+    if (!saved) return false;
     try {
-      await fetch("/api/call-rules", {
+      const res = await fetch("/api/call-rules", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...saved, blocked, dnd: dndOn }),
       });
+      return res.ok;
     } catch {
-      // The local list still hides the chat; the next change retries.
+      return false;
+    }
+  }, []);
+
+  // The server's blocked list as it stands right now. undefined means the
+  // read failed, which the caller must tell apart from "nobody is blocked".
+  const fetchCallRules = useCallback(async (): Promise<string[] | undefined> => {
+    const saved = loadSession();
+    if (!saved) return undefined;
+    try {
+      const res = await fetch("/api/call-rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(saved),
+      });
+      const data = (await res.json().catch(() => ({}))) as { rules?: { blocked?: string[] } };
+      if (!res.ok || !data.rules) return undefined;
+      return data.rules.blocked ?? [];
+    } catch {
+      return undefined;
     }
   }, []);
 
@@ -2887,19 +2900,43 @@ export default function Dialer() {
 
   // Blocking has to update both: the local list (so the chat disappears
   // right away) and the server list (so the call is actually turned away).
-  function handleToggleBlock(number: string) {
-    const next = blockedRef.current.includes(number)
-      ? blockedRef.current.filter((n) => n !== number)
-      : [...blockedRef.current, number];
+  //
+  // The write is checked. It used to be fired and forgotten, so a block that
+  // never reached the server still looked blocked here - the chat vanished,
+  // the number was in the Blocked list, and the calls kept coming through.
+  // On a business line that is the worst possible way to fail, so a failed
+  // write puts the local list back and says so.
+  async function handleToggleBlock(number: string) {
+    const wasBlocked = blockedRef.current.includes(number);
     chatPrefs.toggleBlock(number);
-    void pushCallRules(next, dnd);
+
+    // Read the server's list before writing it back, the same way editing a
+    // contact does. A write builds the whole list from this browser's copy,
+    // so without the re-read two things went wrong: blocking a number in the
+    // first moment after unlock - before the initial fetch had arrived - sent
+    // up a list of one and deleted every other block server-side, and two
+    // people blocking at once each erased the other's.
+    const current = (await fetchCallRules()) ?? blockedRef.current;
+    const next = wasBlocked ? current.filter((n) => n !== number) : [...current.filter((n) => n !== number), number];
+
+    if (!(await pushCallRules(next, dnd))) {
+      chatPrefs.toggleBlock(number);
+      setToast(wasBlocked ? "Couldn't unblock - try again" : "Couldn't block - try again");
+    }
   }
 
   async function handleDndChange(on: boolean) {
     setDndBusy(true);
     setDnd(on);
-    await pushCallRules(blockedRef.current, on);
+    // Same reason as blocking: a write sends the whole rule set, so flipping
+    // this switch from a stale list would quietly delete blocked numbers.
+    const saved = await pushCallRules((await fetchCallRules()) ?? blockedRef.current, on);
     setDndBusy(false);
+    if (!saved) {
+      setDnd(!on);
+      setToast("Couldn't save that - try again");
+      return;
+    }
     setToast(on ? "Do not disturb is on" : "Do not disturb is off");
   }
 
@@ -3651,12 +3688,20 @@ export default function Dialer() {
     setActiveThread(number);
   }
 
-  function saveContactFromCard(card: ContactCard) {
+  // Saving a contact someone texted over as a card. The toast waits for the
+  // write, like every other contact save - it used to announce "saved to
+  // contacts" before the request had been sent, so a failed save still read
+  // as a success and the contact was gone on the next reload.
+  async function saveContactFromCard(card: ContactCard) {
     if (findContactByNumber(contacts, card.number)) return;
     const next = [...contacts, { id: crypto.randomUUID(), name: card.name, number: card.number }];
     setContacts(next);
-    void saveContactsToServer(next);
-    setToast(`${card.name} saved to contacts`);
+    if (await saveContactsToServer(next)) {
+      setToast(`${card.name} saved to contacts`);
+    } else {
+      setContacts(contacts);
+      setToast("Couldn't save that contact - try again");
+    }
   }
 
   // Saves the whole chat as a text file: one line per message.
@@ -3948,7 +3993,7 @@ export default function Dialer() {
                   { key: "mute", label: chatPrefs.isMuted(activeThread) ? "Unmute notifications" : "Mute notifications", run: () => (chatPrefs.isMuted(activeThread) ? chatPrefs.mute(activeThread, 0) : setMuteSheetFor(activeThread)) },
                   { key: "export", label: "Export chat", run: () => void exportChat() },
                   { key: "link", label: "Copy chat link", run: copyChatLink },
-                  { key: "block", label: chatPrefs.isBlocked(activeThread) ? "Unblock" : "Block", run: () => handleToggleBlock(activeThread), danger: true },
+                  { key: "block", label: chatPrefs.isBlocked(activeThread) ? "Unblock" : "Block", run: () => void handleToggleBlock(activeThread), danger: true },
                   { key: "clear", label: "Clear chat", run: () => setClearChatFor(activeThread), danger: true },
                   { key: "delete", label: "Delete chat", run: () => void handleDeleteConversation(activeThread), danger: true },
                 ].map((it) => (
@@ -4045,7 +4090,7 @@ export default function Dialer() {
                       setMessageTo(number);
                       setActiveThread(number);
                     }}
-                    onSaveContact={saveContactFromCard}
+                    onSaveContact={(card) => void saveContactFromCard(card)}
                     onOpenInfo={() => setInfoMessage(m)}
                   />
                   {delivery && (
@@ -4096,7 +4141,7 @@ export default function Dialer() {
         {chatPrefs.isBlocked(activeThread) ? (
           <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-900/[0.06] px-4 py-3 dark:bg-white/[0.08]" role="status">
             <p className="text-sm text-slate-600 dark:text-slate-300">You blocked this number, so you cannot send messages to it.</p>
-            <button type="button" onClick={() => handleToggleBlock(activeThread)} className="shrink-0 rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] px-4 py-2 text-xs font-semibold text-white active:scale-95">
+            <button type="button" onClick={() => void handleToggleBlock(activeThread)} className="shrink-0 rounded-full bg-gradient-to-b from-[#e0555c] to-[#C0272D] px-4 py-2 text-xs font-semibold text-white active:scale-95">
               Unblock
             </button>
           </div>
@@ -5573,7 +5618,7 @@ export default function Dialer() {
           dndBusy={dndBusy}
           onDndChange={(on) => void handleDndChange(on)}
           onUnblock={(number) => {
-            handleToggleBlock(number);
+            void handleToggleBlock(number);
             setToast("Unblocked");
           }}
           onBackup={() => {
