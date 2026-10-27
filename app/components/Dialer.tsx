@@ -10,7 +10,7 @@ import {
   startRegistration,
 } from "@simplewebauthn/browser";
 import { isValidE164, normalizePhoneNumber } from "@/lib/phone";
-import { byName, contactMatches, numberMatches, type Contact } from "@/lib/contacts";
+import { allNumbers, byName, contactMatches, findContactByNumber, nameForNumber, numberMatches, type Contact } from "@/lib/contacts";
 import type { Lead } from "@/lib/leads";
 import type { ConversationSummary, ThreadMessage } from "@/lib/messageThread";
 import type { CallLogEntry } from "@/lib/callLog";
@@ -938,7 +938,7 @@ export default function Dialer() {
   // yank the input out from under them. This is only ever set explicitly:
   // submitting the "new message" number, or clicking a conversation/contact.
   const [activeThread, setActiveThread] = useState<string | null>(null);
-  const threadContactName = activeThread ? contacts.find((c) => c.number === activeThread)?.name : undefined;
+  const threadContactName = activeThread ? nameForNumber(contacts, activeThread) : undefined;
 
   const stickToBottomRef = useRef(true);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
@@ -1051,7 +1051,7 @@ export default function Dialer() {
     const first = audible[0];
     if (settingsRef.current.desktopNotifications && document.hidden && typeof Notification !== "undefined" && Notification.permission === "granted") {
       try {
-        const name = contacts.find((c) => c.number === first.number)?.name ?? first.number;
+        const name = nameForNumber(contacts, first.number) ?? first.number;
         const body = settingsRef.current.notifyPreview ? previewLabel(first.lastBody) || (first.lastKind ? "Attachment" : "New message") : "New message";
         const n = new Notification(audible.length > 1 ? `${audible.length} new messages` : name, { body: audible.length > 1 ? "Open Business Caller to read them" : body, tag: first.number });
         n.onclick = () => {
@@ -2826,8 +2826,12 @@ export default function Dialer() {
       setNamingError("That number can't be saved.");
       return;
     }
-    if (contacts.some((c) => c.number === number)) {
-      setNamingError("That number is already in your contacts.");
+    // Any of their numbers, not just the primary - otherwise saving someone's
+    // work line a second time silently creates a duplicate contact, and from
+    // then on a call from it could show either name.
+    const already = findContactByNumber(contacts, number);
+    if (already) {
+      setNamingError(`That number is already saved under ${already.name}.`);
       return;
     }
 
@@ -3063,7 +3067,7 @@ export default function Dialer() {
     const saved = loadSession();
     if (!saved) return;
     playTap();
-    const label = contacts.find((c) => c.number === number)?.name ?? number;
+    const label = nameForNumber(contacts, number) ?? number;
     try {
       for (const item of items) {
         const res = await fetch("/api/sms", {
@@ -3163,7 +3167,7 @@ export default function Dialer() {
   const filteredCalls = callLog.filter((entry) => {
     const q = callsSearch.trim();
     if (!q) return true;
-    const name = contacts.find((ct) => ct.number === entry.with)?.name ?? "";
+    const name = nameForNumber(contacts, entry.with) ?? "";
     // numberMatches compares digits only, so "206 452" and "(206) 452"
     // find a number stored as +12064523433.
     return name.toLowerCase().includes(q.toLowerCase()) || numberMatches(entry.with, q);
@@ -3263,7 +3267,7 @@ export default function Dialer() {
         )}
         {callLogTruncated && !callsSearch.trim() && <TruncationNotice what="calls" />}
         {filteredCalls.map((entry, i) => {
-          const name = contacts.find((ct) => ct.number === entry.with)?.name;
+          const name = nameForNumber(contacts, entry.with);
           const missed = MISSED_STATUSES.has(entry.status);
           return (
             <div key={entry.sid} className={`${LIST_ROW_CLASS} ${ROW_ENTRANCE_CLASS}`} style={staggerStyle(i)}>
@@ -3648,7 +3652,7 @@ export default function Dialer() {
   }
 
   function saveContactFromCard(card: ContactCard) {
-    if (contacts.some((c) => c.number === card.number)) return;
+    if (findContactByNumber(contacts, card.number)) return;
     const next = [...contacts, { id: crypto.randomUUID(), name: card.name, number: card.number }];
     setContacts(next);
     void saveContactsToServer(next);
@@ -4030,7 +4034,7 @@ export default function Dialer() {
                     reaction={chatPrefs.prefs.reactions[m.sid]}
                     starred={chatPrefs.isStarred(m.sid)}
                     votes={votesFor(m, chatMessages)}
-                    isKnownNumber={(number) => contacts.some((c) => c.number === number)}
+                    isKnownNumber={(number) => findContactByNumber(contacts, number) !== undefined}
                     autoLoadMedia={settings.autoDownload}
                     onSelect={(mode) => setSelectedSids((cur) => (mode === "start" ? (cur.includes(m.sid) ? cur : [...cur, m.sid]) : cur.includes(m.sid) ? cur.filter((x) => x !== m.sid) : [...cur, m.sid]))}
                     onSwipeReply={() => startReply(m)}
@@ -4258,7 +4262,7 @@ export default function Dialer() {
           )}
           <ConversationList
             conversations={conversations}
-            nameFor={(number) => contacts.find((ct) => ct.number === number)?.name}
+            nameFor={(number) => nameForNumber(contacts, number)}
             loading={conversationsLoading}
             search={textsSearch}
             activeNumber={activeThread}
@@ -4535,8 +4539,8 @@ export default function Dialer() {
   // The Phone Book stores numbers in E.164, while what is typed into the
   // keypad is whatever the person typed, so the lookup has to normalise
   // first or a saved contact's name never appears on the call screen.
-  const overlayName = phoneNumber ? contacts.find((c) => c.number === normalizePhoneNumber(phoneNumber))?.name : undefined;
-  const incomingName = incomingFrom ? contacts.find((c) => c.number === incomingFrom)?.name : undefined;
+  const overlayName = phoneNumber ? nameForNumber(contacts, normalizePhoneNumber(phoneNumber)) : undefined;
+  const incomingName = incomingFrom ? nameForNumber(contacts, incomingFrom) : undefined;
 
   // The dial pad / active-call screen. Rendered twice: docked permanently
   // on the right on desktop (there's plenty of spare width there, so it's
@@ -4826,7 +4830,7 @@ export default function Dialer() {
             {callStatus === "in-call" && inConference && conferenceParticipants.length > 0 && (
               <div className="mt-4 space-y-1.5">
                 {conferenceParticipants.map((p) => {
-                  const name = contacts.find((c) => c.number === p.number)?.name;
+                  const name = nameForNumber(contacts, p.number);
                   return (
                     <div
                       key={p.callSid}
@@ -5344,7 +5348,10 @@ export default function Dialer() {
       {openContact && (
         <ContactDetail
           contact={openContact}
-          calls={callLog.filter((entry) => entry.with === openContact.number)}
+          // Every number they hold. A screen whose whole point is that one
+          // person can have a work and a home line must not show only the
+          // calls that came through one of them.
+          calls={callLog.filter((entry) => allNumbers(openContact).some((n) => n.number === entry.with))}
           onClose={() => setOpenContactId(null)}
           onCall={(number) => {
             setOpenContactId(null);
@@ -5409,7 +5416,7 @@ export default function Dialer() {
       {starredOpen && (
         <StarredView
           starred={chatPrefs.prefs.starred}
-          nameFor={(number) => contacts.find((c) => c.number === number)?.name}
+          nameFor={(number) => nameForNumber(contacts, number)}
           onOpen={openStarred}
           onUnstar={(sid) => chatPrefs.unstarMany([sid])}
           onClose={() => setStarredOpen(false)}
@@ -5507,7 +5514,7 @@ export default function Dialer() {
               {Array.from(new Set([...conversations.map((c) => c.number), ...contacts.map((c) => c.number)]))
                 .filter((n) => n !== activeThread)
                 .map((number) => {
-                  const name = contacts.find((c) => c.number === number)?.name;
+                  const name = nameForNumber(contacts, number);
                   return (
                     <button
                       key={number}
@@ -5561,7 +5568,7 @@ export default function Dialer() {
           onSignOut={handleSignOut}
           signOutDisabled={canHangUp}
           onClose={() => setSettingsOpen(false)}
-          blocked={chatPrefs.prefs.blocked.map((number) => ({ number, name: contacts.find((c) => c.number === number)?.name }))}
+          blocked={chatPrefs.prefs.blocked.map((number) => ({ number, name: nameForNumber(contacts, number) }))}
           dnd={dnd}
           dndBusy={dndBusy}
           onDndChange={(on) => void handleDndChange(on)}

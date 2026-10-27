@@ -62,6 +62,25 @@ export function numberMatches(number: string, query: string): boolean {
   return number.replace(/\D/g, "").includes(digits);
 }
 
+/**
+ * The contact a number belongs to, checking every number they have.
+ *
+ * A contact can hold more than one number, so matching only on the primary
+ * meant saving someone's work number achieved nothing: a call from it still
+ * showed as a bare number, the notification still said the number rather
+ * than the name, and the call list still offered to "save" a number that
+ * was already in the Phone Book under that person.
+ */
+export function findContactByNumber(contacts: Contact[], number: string): Contact | undefined {
+  if (!number) return undefined;
+  return contacts.find((c) => c.number === number || (c.extraNumbers ?? []).some((n) => n.number === number));
+}
+
+/** That contact's name, or undefined - the common case at call sites. */
+export function nameForNumber(contacts: Contact[], number: string): string | undefined {
+  return findContactByNumber(contacts, number)?.name;
+}
+
 /** Alphabetical by name, so a long Phone Book stays navigable. */
 export function byName(a: Contact, b: Contact): number {
   return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });

@@ -93,6 +93,12 @@ export function ContactDetail({
         setError(`"${entry.number}" is not a valid number. Use international format, e.g. +12065551234`);
         return;
       }
+      // The same number twice would list it twice here and tell the lookup
+      // nothing new, so refuse it rather than save a contact that looks broken.
+      if (normalized === normalizedPrimary || cleanedExtras.some((n) => n.number === normalized)) {
+        setError(`${normalized} is already on this contact.`);
+        return;
+      }
       cleanedExtras.push({ label: entry.label || "Other", number: normalized });
     }
 

@@ -1,5 +1,5 @@
 import twilio from "twilio";
-import type { Contact } from "./contacts";
+import { nameForNumber, type Contact } from "./contacts";
 
 // Server-only. Turns a bare number into whatever the person would
 // recognise, for the notifications that announce a call or a text.
@@ -27,7 +27,10 @@ export async function lookupContactName(username: string, number: string): Promi
     const doc = await client.sync.v1.services(serviceSid).documents(documentNameFor(username)).fetch();
     const data = doc.data as { contacts?: Contact[] } | undefined;
     if (!Array.isArray(data?.contacts)) return undefined;
-    return data.contacts.find((c) => c.number === number)?.name;
+    // Every number the contact has, not just the primary - otherwise a call
+    // from someone's work number is announced as a bare number even though
+    // they are in the Phone Book.
+    return nameForNumber(data.contacts, number);
   } catch (err) {
     // A name is a nicety. Never let looking one up stop the notification -
     // the number alone still answers "who is this?".
