@@ -772,9 +772,11 @@ export default function Dialer() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [leadsLoading, setLeadsLoading] = useState(false);
   const [leadsSearch, setLeadsSearch] = useState("");
-  // Claiming texts a word back to the answering service. Remembered per
-  // device so the button doesn't invite a second claim while the reply is
-  // still on its way.
+  // Claiming texts a word back to the answering service, so a second claim
+  // is a second text and a job that looks taken twice. Kept in
+  // localStorage rather than component state: this used to be plain
+  // useState, so every reload showed claimed jobs as unclaimed again and
+  // invited exactly that.
   const [claimedSids, setClaimedSids] = useState<string[]>([]);
   const [callLog, setCallLog] = useState<CallLogEntry[]>([]);
   const [callLogLoading, setCallLogLoading] = useState(false);
@@ -1803,11 +1805,44 @@ export default function Dialer() {
     return () => clearTimeout(timer);
   }, [unlocked, activeThread, fetchConversations]);
 
+  // Which leads this person has already claimed. Scoped per username, so
+  // two people sharing a laptop don't see each other's claims.
+  const claimedKey = signedInUsername ? `dialer_claimed:${signedInUsername}` : "";
+
+  useEffect(() => {
+    if (!claimedKey) return;
+    // Applied on the next tick rather than during the effect, the same way
+    // the draft loader does it: setting state synchronously inside an
+    // effect makes React re-render in a cascade.
+    const timer = setTimeout(() => {
+      try {
+        const raw = localStorage.getItem(claimedKey);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) setClaimedSids(parsed.filter((x): x is string => typeof x === "string"));
+      } catch {
+        // Storage unavailable (private browsing, quota): claims simply
+        // aren't remembered across reloads, which is how it behaved before.
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [claimedKey]);
+
   // Contacts are shared across every device via app/api/contacts/route.ts -
   // fetched once on unlock, then re-fetched after every add/delete so this
   // browser's list stays in sync with whatever it just wrote.
-  // Returns the list it fetched, so a caller about to write can start from
-  // the server's copy rather than a possibly stale one (see handleSaveContact).
+  const rememberClaimed = useCallback(
+    (sids: string[]) => {
+      setClaimedSids(sids);
+      if (!claimedKey) return;
+      try {
+        localStorage.setItem(claimedKey, JSON.stringify(sids.slice(-500)));
+      } catch {
+        // As above - the in-memory list still works for this session.
+      }
+    },
+    [claimedKey],
+  );
+
   const fetchLeads = useCallback(async () => {
     const saved = loadSession();
     if (!saved) return;
@@ -1827,6 +1862,8 @@ export default function Dialer() {
     }
   }, []);
 
+  // Returns the list it fetched, so a caller about to write can start from
+  // the server's copy rather than a possibly stale one (see handleSaveContact).
   const fetchContacts = useCallback(async (): Promise<Contact[] | null> => {
     const saved = loadSession();
     if (!saved) return null;
@@ -2364,6 +2401,18 @@ export default function Dialer() {
 
   // The server's rules are the shared truth: a number blocked on a phone
   // must show as blocked here too, and DND is not a per-device setting.
+  //
+  // Fetched once per sign-in. It used to depend on `chatPrefs`, which
+  // useChatPrefs rebuilds on every render, so this ran on every render
+  // instead - roughly eight needless requests a minute per open tab, enough
+  // to approach the route's own rate limit with three people signed in. The
+  // ref below carries the one thing the effect needs without tying it to
+  // that object's identity.
+  const toggleBlockRef = useRef(chatPrefs.toggleBlock);
+  useEffect(() => {
+    toggleBlockRef.current = chatPrefs.toggleBlock;
+  });
+
   useEffect(() => {
     if (!unlocked) return;
     const saved = loadSession();
@@ -2379,11 +2428,19 @@ export default function Dialer() {
         const data = (await res.json().catch(() => ({}))) as { rules?: { blocked?: string[]; dnd?: boolean } };
         if (cancelled || !res.ok || !data.rules) return;
         setDnd(!!data.rules.dnd);
-        const serverBlocked = data.rules.blocked ?? [];
+
         // Adopt anything blocked elsewhere that this browser doesn't know
-        // about yet, so the chat list hides it straight away.
-        for (const number of serverBlocked) {
-          if (!blockedRef.current.includes(number)) chatPrefs.toggleBlock(number);
+        // about yet, so the chat list hides it straight away. Each number
+        // is toggled at most once: blockedRef is only refreshed after a
+        // render, so re-reading it inside this loop would still show the
+        // old list and toggle the same number twice - which, being a
+        // toggle, would unblock it again.
+        const alreadyBlocked = new Set(blockedRef.current);
+        for (const number of data.rules.blocked ?? []) {
+          if (!alreadyBlocked.has(number)) {
+            alreadyBlocked.add(number);
+            toggleBlockRef.current(number);
+          }
         }
       } catch {
         // Falls back to whatever this browser already had.
@@ -2392,21 +2449,27 @@ export default function Dialer() {
     return () => {
       cancelled = true;
     };
-  }, [unlocked, chatPrefs]);
+  }, [unlocked]);
 
   useEffect(() => {
-    if (!unlocked || activeTab !== "leads") return;
+    // Fetched once on sign-in as well as while the tab is open, because the
+    // nav badge counts unclaimed urgent jobs - and a badge that only
+    // appears once you have already looked at the tab tells you nothing.
+    // This used to be gated on the Leads tab being active, so the badge was
+    // always zero until it was too late to be useful.
+    if (!unlocked) return;
+    const onLeads = activeTab === "leads";
     // Deferred to the next tick, the same way the call log is fetched:
     // fetchLeads flips a loading flag the moment it is called, and doing
     // that synchronously inside an effect makes React re-render in a
     // cascade.
     const first = setTimeout(() => void fetchLeads(), 0);
-    // A new job arriving while the tab is open is worth seeing without
-    // having to go and come back.
-    const timer = setInterval(() => void fetchLeads(), 120_000);
+    // Only poll while someone is looking at the list; off the tab, the
+    // count at sign-in is enough and the requests are not worth it.
+    const timer = onLeads ? setInterval(() => void fetchLeads(), 120_000) : undefined;
     return () => {
       clearTimeout(first);
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
     };
   }, [unlocked, activeTab, fetchLeads]);
 
@@ -2545,6 +2608,25 @@ export default function Dialer() {
     setContacts([]);
     setDevices([]);
     setDeviceSetupMessage(null);
+
+    // Everything below is someone's customer data, and this browser may be
+    // handed straight to the next person. Without clearing it they would
+    // see the previous person's inbox and jobs for the second or two
+    // before their own fetches land - names, numbers, addresses and what
+    // the caller said. The lists above are cleared for exactly this
+    // reason; these were simply missed when they were added.
+    setConversations([]);
+    setLeads([]);
+    setClaimedSids([]);
+    setLeadsSearch("");
+    setCallsSearch("");
+    setContactsSearch("");
+    setTextsSearch("");
+    setOpenContactId(null);
+    setConfirmDeleteContact(null);
+    setNamingNumber(null);
+    setDnd(false);
+
     resetAfterCall();
   }
 
@@ -3108,9 +3190,13 @@ export default function Dialer() {
   // the useful signal is "I've taken this", and the send retries itself if
   // the network is down.
   async function handleClaimLead(lead: Lead) {
-    if (!lead.claimWord || claimedSids.includes(lead.sid)) return;
+    // A summary whose sender Twilio never recorded has nowhere to reply
+    // to. Without this the claim is marked, a request is sent to a blank
+    // number, the server refuses it and the claim is rolled back - a round
+    // trip that could only ever fail.
+    if (!lead.claimWord || !isValidE164(lead.fromNumber) || claimedSids.includes(lead.sid)) return;
     playTap();
-    setClaimedSids((current) => [...current, lead.sid]);
+    rememberClaimed([...claimedSids, lead.sid]);
     setToast(`${lead.customerName} claimed`);
 
     const saved = loadSession();
@@ -3122,12 +3208,12 @@ export default function Dialer() {
         body: JSON.stringify({ ...saved, to: lead.fromNumber, message: lead.claimWord }),
       });
       if (!res.ok) {
-        setClaimedSids((current) => current.filter((sid) => sid !== lead.sid));
+        rememberClaimed(claimedSids.filter((sid) => sid !== lead.sid));
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         setToast(data.error || "Could not claim that lead");
       }
     } catch {
-      setClaimedSids((current) => current.filter((sid) => sid !== lead.sid));
+      rememberClaimed(claimedSids.filter((sid) => sid !== lead.sid));
       setToast("Could not claim that lead");
     }
   }
@@ -4832,7 +4918,7 @@ export default function Dialer() {
                   activeTab === "leads" ? "bg-white text-[#C0272D] ring-[#C0272D]" : "bg-[#C0272D] text-white ring-white dark:ring-[#0c0d10]"
                 }`}
                 role="status"
-                aria-label={`${urgentLeadCount} urgent leads`}
+                aria-label={`${urgentLeadCount} urgent`}
               >
                 {urgentLeadCount > 9 ? "9+" : urgentLeadCount}
               </span>
@@ -4982,7 +5068,7 @@ export default function Dialer() {
                     activeTab === "leads" ? "bg-white text-[#C0272D] ring-[#C0272D]" : "bg-[#C0272D] text-white ring-white dark:ring-[#0c0d10]"
                   }`}
                   role="status"
-                  aria-label={`${urgentLeadCount} urgent leads`}
+                  aria-label={`${urgentLeadCount} urgent`}
                 >
                   {urgentLeadCount > 9 ? "9+" : urgentLeadCount}
                 </span>

@@ -183,7 +183,7 @@ export function LeadsView({
                     Directions
                   </a>
                 )}
-                {lead.claimWord && !claimed && (
+                {lead.claimWord && lead.fromNumber && !claimed && (
                   <button
                     type="button"
                     onClick={() => onClaim(lead)}

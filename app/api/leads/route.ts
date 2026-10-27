@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { requireUser } from "@/lib/auth";
 import { isOurCopy } from "@/lib/messageThread";
-import { byUrgencyThenRecency, parseLead, type Lead } from "@/lib/leads";
+import { byUrgencyThenRecency, dropResends, parseLead, type Lead } from "@/lib/leads";
 
 // Requires Node's crypto module (via requireUser / the twilio SDK), so
 // this must run on the Node.js runtime, not Edge.
@@ -49,7 +49,6 @@ export async function POST(req: Request) {
     const received = await client.messages.list({ to: user.phoneNumber, limit: FETCH_LIMIT });
 
     const leads: Lead[] = [];
-    const seen = new Set<string>();
 
     for (const m of received) {
       // Everyone shares one Twilio account, so a colleague's outbound copy
@@ -66,17 +65,13 @@ export async function POST(req: Request) {
       });
       if (!lead) continue;
 
-      // The same summary is sometimes texted more than once. One job should
-      // appear once, so later copies of an identical summary are dropped.
-      const fingerprint = lead.raw.replace(/\s+/g, " ").trim();
-      if (seen.has(fingerprint)) continue;
-      seen.add(fingerprint);
-
       leads.push(lead);
     }
 
-    leads.sort(byUrgencyThenRecency);
-    return NextResponse.json({ leads, truncated: received.length >= FETCH_LIMIT });
+    // dropResends, not a plain de-dupe: see lib/leads.ts for why identical
+    // text alone must not merge two jobs.
+    const unique = dropResends(leads).sort(byUrgencyThenRecency);
+    return NextResponse.json({ leads: unique, truncated: received.length >= FETCH_LIMIT });
   } catch (err) {
     console.error("[api/leads] Twilio fetch failed:", err);
     return NextResponse.json({ error: "Failed to load leads." }, { status: 502 });

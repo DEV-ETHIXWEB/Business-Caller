@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { byUrgencyThenRecency, looksLikeLead, parseLead, type Lead } from "@/lib/leads";
+import { byUrgencyThenRecency, dropResends, looksLikeLead, parseLead, type Lead } from "@/lib/leads";
 
 // Verbatim from the live account - the exact shape the answering service sends.
 const URGENT = `🔧 New Lead — URGENT
@@ -98,5 +98,39 @@ describe("ordering", () => {
       .sort(byUrgencyThenRecency)
       .map((l) => l.customerName);
     assert.deepEqual(sorted, ["new-urgent", "old-urgent", "estimate", "new-routine"]);
+  });
+});
+
+describe("repeat sends vs repeat calls", () => {
+  const lead = (sid: string, at: number, raw: string): Lead =>
+    ({ sid, at, toNumber: "+12064523433", fromNumber: "+12068956963", customerName: "Gary", priority: "urgent", raw }) as Lead;
+
+  const SAME = "New Lead - URGENT\nCustomer: Gary\nProblem: Leaky faucet";
+
+  it("drops the same summary texted twice in a row", () => {
+    const kept = dropResends([lead("a", 1_000_000, SAME), lead("b", 1_000_000 + 30_000, SAME)]);
+    assert.deepEqual(kept.map((l) => l.sid), ["a"]);
+  });
+
+  it("keeps the same customer ringing back days later", () => {
+    // The real risk: identical text is not the same job. Losing this one
+    // means a job that came in simply never appears.
+    const kept = dropResends([lead("a", 1_000_000, SAME), lead("b", 1_000_000 + 3 * 24 * 3600_000, SAME)]);
+    assert.deepEqual(kept.map((l) => l.sid), ["a", "b"]);
+  });
+
+  it("treats whitespace-only differences as the same text", () => {
+    const kept = dropResends([lead("a", 1_000_000, SAME), lead("b", 1_000_000 + 1000, SAME.replace(/\n/g, "\n  "))]);
+    assert.deepEqual(kept.map((l) => l.sid), ["a"]);
+  });
+
+  it("never merges two different jobs", () => {
+    const other = SAME.replace("Gary", "Lucy");
+    const kept = dropResends([lead("a", 1_000_000, SAME), lead("b", 1_000_000 + 1000, other)]);
+    assert.equal(kept.length, 2);
+  });
+
+  it("handles an empty list", () => {
+    assert.deepEqual(dropResends([]), []);
   });
 });

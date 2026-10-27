@@ -131,3 +131,31 @@ export function byUrgencyThenRecency(a: Lead, b: Lead): number {
 export function mapLink(address: string): string {
   return `https://maps.google.com/?q=${encodeURIComponent(address)}`;
 }
+
+// Two identical summaries this close together are the same job texted
+// twice; further apart they are two calls that happened to read the same.
+export const RESEND_WINDOW_MS = 15 * 60 * 1000;
+
+/**
+ * Drops repeat sends of the same summary, keeping genuine repeat calls.
+ *
+ * The answering service sometimes texts a summary more than once, and one
+ * job should appear once. Matching on the text alone is not enough to call
+ * two summaries the same job though: the same customer ringing back about
+ * the same problem next week produces word-for-word the same summary, and
+ * collapsing those would quietly hide the second call - which, for a list
+ * whose whole purpose is "here is the work that came in", is the worst
+ * thing it could do.
+ */
+export function dropResends(leads: Lead[], windowMs = RESEND_WINDOW_MS): Lead[] {
+  const lastSeen = new Map<string, number>();
+  const kept: Lead[] = [];
+  for (const lead of leads) {
+    const fingerprint = lead.raw.replace(/\s+/g, " ").trim();
+    const previous = lastSeen.get(fingerprint);
+    if (previous !== undefined && Math.abs(previous - lead.at) <= windowMs) continue;
+    lastSeen.set(fingerprint, lead.at);
+    kept.push(lead);
+  }
+  return kept;
+}
