@@ -825,6 +825,13 @@ export default function Dialer() {
   const [selectedInputId, setSelectedInputId] = useState("");
   const [selectedOutputId, setSelectedOutputId] = useState("");
   const [outputSelectionSupported, setOutputSelectionSupported] = useState(false);
+  // Set when the browser refuses to move the call audio, so the screen can
+  // say so instead of silently showing a choice that did not take.
+  const [audioRouteError, setAudioRouteError] = useState<string | null>(null);
+  // Whether this is a phone or tablet browser, where call audio is pinned to
+  // the loudspeaker whatever the page asks for.
+  const isPhoneBrowser =
+    typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   const [phoneNumber, setPhoneNumber] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -2669,11 +2676,22 @@ export default function Dialer() {
   }
 
   async function handleOutputDeviceChange(id: string) {
-    setSelectedOutputId(id);
+    // The selection is only moved once the browser has actually accepted
+    // it. It used to be set first and any failure swallowed, so picking
+    // "receiver" showed receiver while the audio stayed on the speaker -
+    // the setting looked broken because it was lying, not because the pick
+    // had not been made.
+    const previous = selectedOutputId;
+    setAudioRouteError(null);
     try {
       await deviceRef.current?.audio?.speakerDevices.set(id);
-    } catch {
-      // Non-critical; audio keeps routing to whatever device was active.
+      setSelectedOutputId(id);
+    } catch (err) {
+      console.warn("[dialer] The browser refused to move the call audio:", err);
+      setSelectedOutputId(previous);
+      setAudioRouteError(
+        "This browser won't let the call audio be moved. Plug in headphones or connect Bluetooth and it will follow them.",
+      );
     }
   }
 
@@ -4521,6 +4539,25 @@ export default function Dialer() {
             </div>
           )}
         </div>
+
+        {audioRouteError && <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-300">{audioRouteError}</p>}
+
+        {/* On a phone the browser decides where call audio goes, and it
+            always picks the loudspeaker. A web page cannot move it to the
+            earpiece - that needs the operating system, which only a native
+            app can ask.
+            Shown on every phone, not only where the picker is missing:
+            Android reports output selection as supported, offers the
+            choice, and still will not move a call to the earpiece. That is
+            the case this note exists for - someone tapping a control that
+            was never going to work and assuming the app is broken. */}
+        {isPhoneBrowser && (
+          <p className="mt-1.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+            Calls play through the loudspeaker. Phone browsers don&apos;t let a web app switch to the earpiece, so that is
+            the one thing this can&apos;t change. Headphones or Bluetooth take over automatically if you&apos;d rather not
+            use the speaker.
+          </p>
+        )}
 
         {ready ? (
           <form onSubmit={handleCall} className="mt-5">

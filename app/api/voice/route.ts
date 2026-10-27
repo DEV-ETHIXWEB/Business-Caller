@@ -94,6 +94,17 @@ export async function POST(req: Request) {
     callerId: user.phoneNumber,
     timeout: RING_TIMEOUT_SECONDS,
     timeLimit: MAX_CALL_SECONDS,
+    // Without this Twilio answers the browser's leg the moment dialling
+    // starts, so the dialer jumped straight to "In call" with the timer
+    // running while the other phone was still ringing, and the caller heard
+    // Twilio's own generic ringback rather than the real one. A call nobody
+    // picked up therefore looked like a call that had failed to connect.
+    //
+    // With it, the leg is answered only when a person actually picks up:
+    // the SDK gets proper ringing state so the screen says "Ringing…" until
+    // then, the real carrier ringback is passed through, and the duration
+    // counts from the moment someone answers.
+    answerOnBridge: true,
     // Runs when this <Dial> finishes. For every normal call it just hangs up
     // (exactly what used to happen with no action at all); it exists so a
     // call being upgraded by Hold/Add Call can continue into a conference
